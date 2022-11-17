@@ -19,13 +19,37 @@ class BootstrapperServer:
     # not current activate. 
     def checkAlive(self):
         while True:
-            time.sleep(4)
+            nodesNotAlive = []
+            time.sleep(6)
             timeNow = datetime.now() 
             for node in self.configTopology.aliveNodes:
-                if self.configTopology.aliveNodes[node] < (timeNow - timedelta(seconds=4)):
+                # print("nodo:", str(node)," - last time:", str(self.configTopology.aliveNodes[node]))
+                if self.configTopology.aliveNodes[node] < (timeNow - timedelta(seconds=6)):
                     print(str(node), " is not current alive")
+                    nodesNotAlive.append(node)
+                    for neighboor in self.configTopology.getVizinhos(str(node)):
+                        print("devo avisar ao ", str(neighboor), " que o ", str(node), "não está mais ativo!")
+                        try:
+                            client_socket = socket.socket()
+                            # select a random interface from the active neighboor to send the message
+                            # here what is relevant is to send the information to the node itself, no matter the interface.
+                            client_socket.connect((neighboor["interfaces"][0]["ip"],20003))
+                            data = {}
+                            data["nodo"] = str(node)
+                            protocolPacket = ProtocolPacket("3",data)
+                            client_socket.send(pickle.dumps(protocolPacket))
+                            client_socket.close()
+                        except Exception as e:
+                            print(str(e))
+                            client_socket.close()
+                        finally:
+                            client_socket.close()
                 else:
                     print(str(node), " is current alive")
+            
+            # eliminate nodes not actives
+            for node in nodesNotAlive:
+                self.configTopology.aliveNodes.pop(node)
             print("----------------")
 
     # [Protocol opcode 0 answer]
@@ -49,14 +73,14 @@ class BootstrapperServer:
         conn.send(pickle.dumps(protocolPacket))
 
         # send to neighboors the notice that the node is current active
-        print("Let's send to neighboors from node " + str(nodeName) + " that he is alive!")
+        # print("Let's send to neighboors from node " + str(nodeName) + " that he is alive!")
         for activeNeighboor in activeNeighboors:
             client_socket = socket.socket()
 
             try:
                 # select a random interface from the active neighboor to send the message
                 # here what is relevant is to send the information to the node itself, no matter the interface.
-                print("ip a mandar opcode 4: ",activeNeighboor["interfaces"][0]["ip"])
+                # print("ip a mandar opcode 4: ",activeNeighboor["interfaces"][0]["ip"])
                 client_socket.connect((activeNeighboor["interfaces"][0]["ip"],20003))
 
                 # create the packet with the information of the node that is now active
@@ -84,16 +108,20 @@ class BootstrapperServer:
     def demultiplexer(self,conn,address):
 
         data = conn.recv(1024)
-        # parser data request into a protocolPacket (opcode + data)
-        protocolPacket = pickle.loads(data)
+        try:
+            # parser data request into a protocolPacket (opcode + data)
+            protocolPacket = pickle.loads(data)
         
-        # invoke an action according to the opcode
-        if protocolPacket.opcode == '0':
-            self.opcode_0_answer(conn=conn, address=address[0])
-        elif protocolPacket.opcode == '1':
-            self.opcode_1_answer(address=address[0])
-        else:
-            print("opcode unknown")
+            # invoke an action according to the opcode
+            if protocolPacket.opcode == '0':
+                self.opcode_0_answer(conn=conn, address=address[0])
+            elif protocolPacket.opcode == '1':
+                # print("receive opcode 1")
+                self.opcode_1_answer(address=address[0])
+            else:
+                print("opcode unknown")
+        except EOFError:
+            print("EOF error")
 
     # description: accept new connection, execute demultiplexer for the connection request
     # and activate checkAlive thread
@@ -110,7 +138,8 @@ class BootstrapperServer:
             while(True):
                 conn, address = server_socket.accept()
                 self.demultiplexer(conn,address)
-        except:
+        except Exception as e:
+            print(str(e))
             server_socket.close()  
         finally:
             server_socket.close()
