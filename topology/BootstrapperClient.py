@@ -3,12 +3,20 @@ from .ProtocolPacket import ProtocolPacket
 import pickle
 import time
 import threading
+from datetime import datetime
 
 class BootstrapperClient:
     def __init__(self, bootstrapperIP, bootstrapperPort):
         self.bootstrapperIP = bootstrapperIP 
         self.bootstrapperPort = bootstrapperPort
         self.activeNeighboors = {}
+        self.metrics = {}
+
+    def getNeighboorNameByAddress(self, address):
+        for node in self.activeNeighboors:
+            for interface in self.activeNeighboors[node]:
+                if interface["ip"] == address:
+                    return node
 
     # description: every 2 seconds send a protocol message to bootstrapper to say that
     # the node yet is alive
@@ -44,6 +52,34 @@ class BootstrapperClient:
         print("Active nodes update ----------------------------")
         print(self.activeNeighboors)
 
+    def opcode_5_handler(self,protocolPacket, address):
+        
+        # update metric from address node
+        neighboorName = self.getNeighboorNameByAddress(address)
+        metrics = {}
+        metrics["saltos"] = protocolPacket.data["saltos"]
+        metrics["tempo"] =  datetime.now() - protocolPacket.data["tempo"]
+        self.metrics[neighboorName] = metrics
+
+        # send probe packets to neighboors except address node
+        for activeNeighboor in self.activeNeighboors:
+            if activeNeighboor != neighboorName:
+                try:
+                    client_socket = socket.socket()
+                    # select a random interface from the active neighboor to send the message
+                    # here what is relevant is to send the information to the node itself, no matter the interface.
+                    client_socket.connect((self.activeNeighboors[activeNeighboor][0]["ip"],20003))
+                    data = {}
+                    data["saltos"] = protocolPacket.data["saltos"] + 1
+                    data["tempo"] =  protocolPacket.data["tempo"]
+                    protocolPacket = ProtocolPacket("5",data)
+                    client_socket.send(pickle.dumps(protocolPacket))
+                except Exception as e:
+                    print(str(e))
+                    client_socket.close()
+                finally:
+                    client_socket.close()
+
     # description: demultiplex diferent protocol requests
     def demultiplexer(self,conn,address):
 
@@ -57,13 +93,18 @@ class BootstrapperClient:
                 self.opcode_3_handler(protocolPacket = protocolPacket)
             elif protocolPacket.opcode == '4':
                 self.opcode_4_handler(protocolPacket = protocolPacket)
+            elif protocolPacket.opcode == '5':
+                self.opcode_5_handler(protocolPacket = protocolPacket, address=address[0])
             else:
                 print("opcode unknown")
         except EOFError:
             print("EOF error")
 
-    # description: get current active neighboors and listen to possible neighboors changes
-    def getNeighboors(self):
+    # description: 
+    #  1-) get current active neighboors 
+    #  2-) listen to possible neighboors changes
+    #  3-) listen to probe packets 
+    def service(self):
         # socket to initially get current activate neighboors
         client_socket = socket.socket()
 
@@ -101,8 +142,8 @@ class BootstrapperClient:
     # description: activate getNeighboors and  aliveMessage thread
     def start(self):
 
-        getNeighboorsThread = threading.Thread(target = self.getNeighboors)
-        getNeighboorsThread.start()
+        serviceThread = threading.Thread(target = self.service)
+        serviceThread.start()
     
         aliveMessageThread = threading.Thread(target = self.aliveMessage)
         aliveMessageThread.start()

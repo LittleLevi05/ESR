@@ -12,6 +12,12 @@ class BootstrapperServer:
         self.port = port
         self.configTopology = ConfigTopology(configFile)
 
+    def isBootstrapper(self, interfaces):
+        for interface in interfaces:
+            if interface["ip"] == self.ip:
+                return True 
+        return False
+
     # description: every 4 seconds check with the nodes in topology send an aliveMesage
     # in the last 4 seconds. If some node X not send and aliveMessage in the
     # last 4 seconds, so the server will send a protocol message with opcode 2
@@ -22,6 +28,10 @@ class BootstrapperServer:
             nodesNotAlive = []
             time.sleep(6)
             timeNow = datetime.now() 
+
+            node = self.configTopology.getNodeNameByAddress(address=self.ip)
+            self.configTopology.aliveNodes[node] = timeNow
+            
             for node in self.configTopology.aliveNodes:
                 # print("nodo:", str(node)," - last time:", str(self.configTopology.aliveNodes[node]))
                 if self.configTopology.aliveNodes[node] < (timeNow - timedelta(seconds=6)):
@@ -38,7 +48,6 @@ class BootstrapperServer:
                             data["nodo"] = str(node)
                             protocolPacket = ProtocolPacket("3",data)
                             client_socket.send(pickle.dumps(protocolPacket))
-                            client_socket.close()
                         except Exception as e:
                             print(str(e))
                             client_socket.close()
@@ -51,6 +60,34 @@ class BootstrapperServer:
             for node in nodesNotAlive:
                 self.configTopology.aliveNodes.pop(node)
             print("----------------")
+
+    # description: in a first view, assuming Bootstrapper node is the RP node of the 
+    # shared tree, every 4 seconds will be send a prove packet to all routes in the
+    # system. Control floading will be used, so the RP node only need to send the
+    # probe packet to their neighboors.
+    def probePacket(self):
+        while True:
+            time.sleep(4)
+            timeNow = datetime.now()
+            nodeName = self.configTopology.getNodeNameByAddress(self.ip)
+            neighboors = self.configTopology.getVizinhos(nodeName=nodeName) 
+            for neighboor in neighboors:
+                if neighboor["nodo"] in self.configTopology.aliveNodes:
+                    try:
+                        client_socket = socket.socket()
+                        # select a random interface from the active neighboor to send the message
+                        # here what is relevant is to send the information to the node itself, no matter the interface.
+                        client_socket.connect((neighboor["interfaces"][0]["ip"],20003))
+                        data = {}
+                        data["saltos"] = 0
+                        data["tempo"] = timeNow
+                        protocolPacket = ProtocolPacket("5",data)
+                        client_socket.send(pickle.dumps(protocolPacket))
+                    except Exception as e:
+                        print(str(e))
+                        client_socket.close()
+                    finally:
+                        client_socket.close()    
 
     # [Protocol opcode 0 answer]
     # description: send current actives neihboors from a given node
@@ -77,26 +114,27 @@ class BootstrapperServer:
         for activeNeighboor in activeNeighboors:
             client_socket = socket.socket()
 
-            try:
-                # select a random interface from the active neighboor to send the message
-                # here what is relevant is to send the information to the node itself, no matter the interface.
-                # print("ip a mandar opcode 4: ",activeNeighboor["interfaces"][0]["ip"])
-                client_socket.connect((activeNeighboor["interfaces"][0]["ip"],20003))
+            if not self.isBootstrapper(activeNeighboor["interfaces"]):
+                try:
+                    # select a random interface from the active neighboor to send the message
+                    # here what is relevant is to send the information to the node itself, no matter the interface.
+                    # print("ip a mandar opcode 4: ",activeNeighboor["interfaces"][0]["ip"])
+                    client_socket.connect((activeNeighboor["interfaces"][0]["ip"],20003))
 
-                # create the packet with the information of the node that is now active
-                nodeInterfaces = self.configTopology.getInterfaces(nodeName)
-                packet = {}
-                packet["nodo"] = nodeName 
-                packet["interfaces"] = nodeInterfaces
-                protocolPacket = ProtocolPacket("4",packet)
+                    # create the packet with the information of the node that is now active
+                    nodeInterfaces = self.configTopology.getInterfaces(nodeName)
+                    packet = {}
+                    packet["nodo"] = nodeName 
+                    packet["interfaces"] = nodeInterfaces
+                    protocolPacket = ProtocolPacket("4",packet)
 
-                client_socket.send(pickle.dumps(protocolPacket))
-                client_socket.close()
-            except Exception as e:
-                print(str(e))
-                client_socket.close()
-            finally:
-                client_socket.close()
+                    client_socket.send(pickle.dumps(protocolPacket))
+                    client_socket.close()
+                except Exception as e:
+                    print(str(e))
+                    client_socket.close()
+                finally:
+                    client_socket.close()
 
     # [Protocol opcode 1 answer]
     # description: update the last time that a node made contact with server
@@ -123,16 +161,23 @@ class BootstrapperServer:
         except EOFError:
             print("EOF error")
 
-    # description: accept new connection, execute demultiplexer for the connection request
-    # and activate checkAlive thread
+    # description: 
+    #   1-) accept new connection, execute demultiplexer for the connection request
+    #   2-) activate checkAlive thread
+    #   3-) activate probePacket thread 
     def start(self):
 
         server_socket = socket.socket() 
         server_socket.bind((self.ip,self.port))
         server_socket.listen(2) # Número de clientes que o servidor atende simultâneamente
 
+        node = self.configTopology.getNodeNameByAddress(address=self.ip)
+        self.configTopology.aliveNodes[node] = datetime.now()
+
         checkAliveThread = threading.Thread(target = self.checkAlive)
         checkAliveThread.start()
+        probePacketThread = threading.Thread(target = self.probePacket)
+        probePacketThread.start()
 
         try:
             while(True):
@@ -142,8 +187,4 @@ class BootstrapperServer:
             print(str(e))
             server_socket.close()  
         finally:
-            server_socket.close()
-
-          
-
-            
+            server_socket.close()          
