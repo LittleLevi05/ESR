@@ -161,10 +161,31 @@ class BootstrapperServer:
         except EOFError:
             print("EOF error")
 
+    def rootNodesProbeReminder(self):
+        while True:
+            time.sleep(10)
+            rootsAndServers = self.configTopology.getRootNodesAndServers()
+            for rootNode, servers in rootsAndServers:
+                try:
+                    client_socket = socket.socket()
+                    client_socket.connect((self.configTopology.getRandomInterface(rootNode), 20003))
+
+                    packet = {}
+                    packet["servidores"] = servers
+                    protocolPacket = ProtocolPacket("6", packet)
+
+                    client_socket.send(pickle.dumps(protocolPacket))
+                except Exception as e:
+                    print(str(e))
+                    client_socket.close()
+                finally:
+                    client_socket.close()
+
     # description: 
     #   1-) accept new connection, execute demultiplexer for the connection request
     #   2-) activate checkAlive thread
-    #   3-) activate probePacket thread 
+    #   3-) activate probePacket thread
+    #   4-) activate rootNodesProbeReminder thread
     def start(self):
 
         server_socket = socket.socket() 
@@ -172,12 +193,14 @@ class BootstrapperServer:
         server_socket.listen(2) # Número de clientes que o servidor atende simultâneamente
 
         node = self.configTopology.getNodeNameByAddress(address=self.ip)
-        self.configTopology.aliveNodes[node] = datetime.now()
+        self.configTopology.aliveNodes[node] = datetime.probenow()
 
         checkAliveThread = threading.Thread(target = self.checkAlive)
         checkAliveThread.start()
         probePacketThread = threading.Thread(target = self.probePacket)
         probePacketThread.start()
+        rootNodesReminderThread = threading.Thread(target = self.rootNodesProbeReminder)
+        rootNodesReminderThread.start()
 
         try:
             while(True):
@@ -187,4 +210,4 @@ class BootstrapperServer:
             print(str(e))
             server_socket.close()  
         finally:
-            server_socket.close()          
+            server_socket.close()

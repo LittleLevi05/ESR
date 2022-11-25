@@ -37,11 +37,44 @@ class ConfigTopology:
             if nodo["nodo"] == nodeName:
                 return nodo["interfaces"]
 
+
+    def getRandomInterface(self, nodeName):
+        interfaces = self.getInterfaces(nodeName)
+        return interfaces[0]["ip"]
+
     def checkIfNodeIsAlive(self,node):
         if node in self.aliveNodes:
             return True
         else:
             return False
-        
+    def getServersNamesByGroup(self, group):
+        servers = []
+        for group in self.configFile["grupos"]:
+            if group["grupo"] == group:
+                for server in group["servidores"]:
+                    servers.append(server["servidor"])
 
-            
+        return servers
+
+    def getServerAddresByName(self, serverName):
+        for server in self.configFile["servidores"]:
+            if server["servidor"] == serverName:
+                return server["ip"]
+
+    def getGroupsByFilename(self, fileName):
+        groups = []
+        for group in self.configFile["grupos"]:
+            if group["ficheiro"] == fileName:
+                groups.append(group["group"])
+
+        return groups
+
+    def getRootNodesAndServers(self):
+        rootNodes = {}
+        for server in self.configFile["servidores"]:
+            if rootNodes[server["rootNode"]]:
+                rootNodes[server["rootNode"]].append({"servidor" : server["servidor"], "ip": server["ip"]})
+            else:
+                rootNodes[server["rootNode"]] = [{"servidor" : server["servidor"], "ip" : server["ip"]}]
+
+        return rootNodes

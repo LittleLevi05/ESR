@@ -9,12 +9,13 @@ class BootstrapperClient:
     def __init__(self, bootstrapperIP, bootstrapperPort):
         self.bootstrapperIP = bootstrapperIP 
         self.bootstrapperPort = bootstrapperPort
-        self.activeNeighboors = {}
+        self.groups = {}
+        self.aliveNeighbours = {}
         self.metrics = {}
 
     def getNeighboorNameByAddress(self, address):
-        for node in self.activeNeighboors:
-            for interface in self.activeNeighboors[node]:
+        for node in self.aliveNeighbours:
+            for interface in self.aliveNeighbours[node]:
                 if interface["ip"] == address:
                     return node
 
@@ -41,16 +42,16 @@ class BootstrapperClient:
         # print("opcode 3!")
         # print(protocolPacket.data)
         # print("Nodo ", str(protocolPacket.data["nodo"], " está desativo!"))
-        self.activeNeighboors.pop(str(protocolPacket.data["nodo"]))
+        self.aliveNeighbours.pop(str(protocolPacket.data["nodo"]))
         print("Active nodes update ----------------------------")
-        print(self.activeNeighboors)
+        print(self.aliveNeighbours)
 
     def opcode_4_handler(self,protocolPacket):
         # print("opcode 4!")
         # print("Nodo ", str(protocolPacket.data["nodo"]), " está ativo!")
-        self.activeNeighboors[str(protocolPacket.data["nodo"])] = protocolPacket.data["interfaces"]
+        self.aliveNeighbours[str(protocolPacket.data["nodo"])] = protocolPacket.data["interfaces"]
         print("Active nodes update ----------------------------")
-        print(self.activeNeighboors)
+        print(self.aliveNeighbours)
 
     def opcode_5_handler(self,protocolPacket, address):
         
@@ -62,13 +63,13 @@ class BootstrapperClient:
         self.metrics[neighboorName] = metrics
 
         # send probe packets to neighboors except address node
-        for activeNeighboor in self.activeNeighboors:
+        for activeNeighboor in self.aliveNeighbours:
             if activeNeighboor != neighboorName:
                 try:
                     client_socket = socket.socket()
                     # select a random interface from the active neighboor to send the message
                     # here what is relevant is to send the information to the node itself, no matter the interface.
-                    client_socket.connect((self.activeNeighboors[activeNeighboor][0]["ip"],20003))
+                    client_socket.connect((self.aliveNeighbours[activeNeighboor][0]["ip"],20003))
                     data = {}
                     data["saltos"] = protocolPacket.data["saltos"] + 1
                     data["tempo"] =  protocolPacket.data["tempo"]
@@ -118,7 +119,7 @@ class BootstrapperClient:
             protocolPacket = pickle.loads(data)
             print("Received from server my current active neighboors: ", protocolPacket.data)
             for node in protocolPacket.data:
-                self.activeNeighboors[node["nodo"]] = node["interfaces"]
+                self.aliveNeighbours[node["nodo"]] = node["interfaces"]
         except:
             client_socket.close()
         finally:
