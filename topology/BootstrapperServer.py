@@ -1,6 +1,7 @@
 import socket
-from .ConfigTopology import ConfigTopology
-from .ProtocolPacket import ProtocolPacket
+
+from ConfigTopology import ConfigTopology
+from ProtocolPacket import ProtocolPacket
 import pickle
 from datetime import datetime, timedelta
 import time
@@ -141,6 +142,21 @@ class BootstrapperServer:
     def opcode_1_answer(self,address):
         node = self.configTopology.getNodeNameByAddress(address=address)
         self.configTopology.aliveNodes[node] = datetime.now()
+
+    # [Protocol opcode 2 answer]
+    # description: return a dictionary with group and server info
+    def opcode_2_answer(self, conn, address):
+        data = {}
+        data["server_info"] = self.configTopology.getServers()
+        data["group_info"] = self.configTopology.getGroups()
+
+        # opcode -1 because this is only supposed to be used on initiation
+        # when there is a change in groups and server an alert on the modification
+        # will be sent
+        protocolPacket = ProtocolPacket("-1",activeNeighboors)
+        conn.send(pickle.dumps(protocolPacket))
+
+
     
     # description: demultiplex diferent protocol requests
     def demultiplexer(self,conn,address):
@@ -165,7 +181,7 @@ class BootstrapperServer:
         while True:
             time.sleep(10)
             rootsAndServers = self.configTopology.getRootNodesAndServers()
-            for rootNode, servers in rootsAndServers:
+            for rootNode, servers in rootsAndServers.items():
                 try:
                     client_socket = socket.socket()
                     client_socket.connect((self.configTopology.getRandomInterface(rootNode), 20003))

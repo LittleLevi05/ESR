@@ -78,3 +78,18 @@ class ConfigTopology:
                 rootNodes[server["rootNode"]] = [{"servidor" : server["servidor"], "ip" : server["ip"]}]
 
         return rootNodes
+
+    def getServers(self):
+        servers = {}
+        for server in self.configFile["servidores"]:
+            servers[server["servidor"]] = {"ip" : server["ip"]}
+
+        return servers
+
+    def getGroups(self):
+        """ Return group_name: [ list of servers that supply the group ] """
+        groups = {}
+        for group in self.configFile["grupos"]:
+            groups[group["grupo"]] = self.getServersNamesByGroup(group["grupo"])
+
+        return groups

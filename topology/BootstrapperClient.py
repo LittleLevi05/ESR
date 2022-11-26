@@ -1,5 +1,5 @@
 import socket
-from .ProtocolPacket import ProtocolPacket
+from ProtocolPacket import ProtocolPacket
 import pickle
 import time
 import threading
@@ -10,8 +10,9 @@ class BootstrapperClient:
         self.bootstrapperIP = bootstrapperIP 
         self.bootstrapperPort = bootstrapperPort
         self.groups = {}
+        self.servers = {}
         self.aliveNeighbours = {}
-        self.metrics = {}
+        self.metricsConstruction = {}
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -57,10 +58,10 @@ class BootstrapperClient:
         
         # update metric from address node
         neighboorName = self.getNeighboorNameByAddress(address)
-        metrics = {}
-        metrics["saltos"] = protocolPacket.data["saltos"]
-        metrics["tempo"] =  datetime.now() - protocolPacket.data["tempo"]
-        self.metrics[neighboorName] = metrics
+        metricsConstruction = {}
+        metricsConstruction["saltos"] = protocolPacket.data["saltos"]
+        metricsConstruction["tempo"] =  datetime.now() - protocolPacket.data["tempo"]
+        self.metricsConstruction[neighboorName] = metricsConstruction
 
         # send probe packets to neighboors except address node
         for activeNeighboor in self.aliveNeighbours:
@@ -80,6 +81,37 @@ class BootstrapperClient:
                     client_socket.close()
                 finally:
                     client_socket.close()
+    def opcode_6_handler(self, protocolPacket):
+        """I'm a root node and need to start a flood to update metrics to servers im rooting"""
+        servers = protocolPacket["servidores"]
+        for aliveNeighbour in self.aliveNeighbours:
+            try:
+                client_socket = socket.socket()
+                client_socket.connect((self.aliveNeighbours[aliveNeighbour][0]["ip"], 20003))
+                data = {}
+                # for now this will be considered as an approximate metric of
+                # time to the servers although it should be updated to a round trip
+                # ping pong request to the servers
+                for server in servers:
+                    data[server["servidor"]] = {"saltos": 0, "rtt": datetime.now()}
+
+                protocolPacket = ProtocolPacket("7", data)
+                client_socket.send(pickle.dumps(protocolPacket))
+            except Exception as e:
+                print(str(e))
+                client_socket.close()
+            finally:
+                client_socket.close()
+
+    def opcode_7_handler(self, protocolPacket, address):
+        """I'm an overlay layer and need to update my metrics and continue to flood"""
+        neighbourName = self.getNeighboorNameByAddress(address)
+        metricsDecision = {}
+
+        for server, server_info in protocolPacket.items():
+            pass
+
+        pass
 
     # description: demultiplex diferent protocol requests
     def demultiplexer(self,conn,address):
@@ -112,14 +144,25 @@ class BootstrapperClient:
         try:
             client_socket.connect((self.bootstrapperIP,self.bootstrapperPort))
 
+            #ask for info of alive Neighbours
             protocolPacket = ProtocolPacket("0","")
-
             client_socket.send(pickle.dumps(protocolPacket))
+            #recieve info
             data = client_socket.recv(1024)
             protocolPacket = pickle.loads(data)
+
+
             print("Received from server my current active neighboors: ", protocolPacket.data)
             for node in protocolPacket.data:
                 self.aliveNeighbours[node["nodo"]] = node["interfaces"]
+            #ask for info of current servers and current groups
+            protocolPacket = ProtocolPacket("2","")
+            client_socket.send(pickle.dumps(protocolPacket))
+            data = client_socket.recv(1024)
+
+            self.servers = data["server_info"]
+            self.groups = data["group_info"]
+
         except:
             client_socket.close()
         finally:
