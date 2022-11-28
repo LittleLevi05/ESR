@@ -47,10 +47,10 @@ class ConfigTopology:
             return True
         else:
             return False
-    def getServersNamesByGroup(self, group):
+    def getServersNamesByGroup(self, groupNumber):
         servers = []
         for group in self.configFile["grupos"]:
-            if group["grupo"] == group:
+            if group["grupo"] == groupNumber:
                 for server in group["servidores"]:
                     servers.append(server["servidor"])
 
