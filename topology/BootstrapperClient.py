@@ -1,5 +1,5 @@
 import socket
-from ProtocolPacket import ProtocolPacket
+from .ProtocolPacket import ProtocolPacket
 import pickle
 import time
 import threading
@@ -71,6 +71,7 @@ class BootstrapperClient:
                     # select a random interface from the active neighboor to send the message
                     # here what is relevant is to send the information to the node itself, no matter the interface.
                     client_socket.connect((self.aliveNeighbours[activeNeighboor][0]["ip"],20003))
+                    print(rootNode)
                     data = {}
                     data["saltos"] = protocolPacket.data["saltos"] + 1
                     data["tempo"] =  protocolPacket.data["tempo"]
@@ -83,10 +84,13 @@ class BootstrapperClient:
                     client_socket.close()
     def opcode_6_handler(self, protocolPacket):
         """I'm a root node and need to start a flood to update metrics to servers im rooting"""
-        servers = protocolPacket["servidores"]
+        print("Received a flood metrics request")
+        data = protocolPacket.data
+        servers = data["servidores"]
         for aliveNeighbour in self.aliveNeighbours:
             try:
                 client_socket = socket.socket()
+                print("Alive neigbours ip " + self.aliveNeighbours[aliveneighbour][0]["ip"])
                 client_socket.connect((self.aliveNeighbours[aliveNeighbour][0]["ip"], 20003))
                 data = {}
                 # for now this will be considered as an approximate metric of
@@ -105,6 +109,7 @@ class BootstrapperClient:
 
     def opcode_7_handler(self, protocolPacket, address):
         """I'm an overlay layer and need to update my metrics and continue to flood"""
+        print("I'm here")
         neighbourName = self.getNeighboorNameByAddress(address)
         metricsDecision = {}
 
@@ -128,6 +133,8 @@ class BootstrapperClient:
                 self.opcode_4_handler(protocolPacket = protocolPacket)
             elif protocolPacket.opcode == '5':
                 self.opcode_5_handler(protocolPacket = protocolPacket, address=address[0])
+            elif protocolPacket.opcode == '6':
+                self.opcode_6_handler(protocolPacket = protocolPacket)
             else:
                 print("opcode unknown")
         except EOFError:
@@ -146,6 +153,7 @@ class BootstrapperClient:
 
             #ask for info of alive Neighbours
             protocolPacket = ProtocolPacket("0","")
+            print("sent info")
             client_socket.send(pickle.dumps(protocolPacket))
             #recieve info
             data = client_socket.recv(1024)
@@ -156,12 +164,23 @@ class BootstrapperClient:
             for node in protocolPacket.data:
                 self.aliveNeighbours[node["nodo"]] = node["interfaces"]
             #ask for info of current servers and current groups
+
+            client_socket.close()
+            client_socket = socket.socket()
+            client_socket.connect((self.bootstrapperIP,self.bootstrapperPort))
+
             protocolPacket = ProtocolPacket("2","")
             client_socket.send(pickle.dumps(protocolPacket))
-            data = client_socket.recv(1024)
+            protocolPacket = client_socket.recv(1024)
+            data = pickle.loads(protocolPacket).data
 
+
+            print(data)
+            print("Received from server the initial server and group configuration")
             self.servers = data["server_info"]
+            print(data["server_info"])
             self.groups = data["group_info"]
+            print(data["group_info"])
 
         except:
             client_socket.close()
@@ -178,8 +197,6 @@ class BootstrapperClient:
                 print("wait server to send neighboor updates")
                 conn, address = server_socket.accept()
                 self.demultiplexer(conn,address)
-        except:
-            server_socket.close()  
         finally:
             server_socket.close()
 

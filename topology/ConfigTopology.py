@@ -71,12 +71,14 @@ class ConfigTopology:
 
     def getRootNodesAndServers(self):
         rootNodes = {}
+        #print(self.configFile["servidores"])
         for server in self.configFile["servidores"]:
-            if rootNodes[server["rootNode"]]:
+            if server["rootNode"] in rootNodes.keys():
                 rootNodes[server["rootNode"]].append({"servidor" : server["servidor"], "ip": server["ip"]})
             else:
                 rootNodes[server["rootNode"]] = [{"servidor" : server["servidor"], "ip" : server["ip"]}]
 
+        #print(rootNodes)
         return rootNodes
 
     def getServers(self):

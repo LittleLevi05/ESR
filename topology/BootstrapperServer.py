@@ -1,7 +1,7 @@
 import socket
 
-from ConfigTopology import ConfigTopology
-from ProtocolPacket import ProtocolPacket
+from .ConfigTopology import ConfigTopology
+from .ProtocolPacket import ProtocolPacket
 import pickle
 from datetime import datetime, timedelta
 import time
@@ -78,6 +78,7 @@ class BootstrapperServer:
                         client_socket = socket.socket()
                         # select a random interface from the active neighboor to send the message
                         # here what is relevant is to send the information to the node itself, no matter the interface.
+                        print("neighbour interface " + neighboor["interfaces"][0]["ip"])
                         client_socket.connect((neighboor["interfaces"][0]["ip"],20003))
                         data = {}
                         data["saltos"] = 0
@@ -130,7 +131,6 @@ class BootstrapperServer:
                     protocolPacket = ProtocolPacket("4",packet)
 
                     client_socket.send(pickle.dumps(protocolPacket))
-                    client_socket.close()
                 except Exception as e:
                     print(str(e))
                     client_socket.close()
@@ -153,7 +153,8 @@ class BootstrapperServer:
         # opcode -1 because this is only supposed to be used on initiation
         # when there is a change in groups and server an alert on the modification
         # will be sent
-        protocolPacket = ProtocolPacket("-1",activeNeighboors)
+        protocolPacket = ProtocolPacket("-1",data)
+        print("Sending initial server and group information")
         conn.send(pickle.dumps(protocolPacket))
 
 
@@ -172,6 +173,8 @@ class BootstrapperServer:
             elif protocolPacket.opcode == '1':
                 # print("receive opcode 1")
                 self.opcode_1_answer(address=address[0])
+            elif protocolPacket.opcode == '2':
+                self.opcode_2_answer(conn=conn, address=address[0])
             else:
                 print("opcode unknown")
         except EOFError:
@@ -179,23 +182,24 @@ class BootstrapperServer:
 
     def rootNodesProbeReminder(self):
         while True:
-            time.sleep(10)
+            time.sleep(9)
             rootsAndServers = self.configTopology.getRootNodesAndServers()
             for rootNode, servers in rootsAndServers.items():
-                try:
+                if rootNode in self.configTopology.aliveNodes:
                     client_socket = socket.socket()
-                    client_socket.connect((self.configTopology.getRandomInterface(rootNode), 20003))
+                    try:
+                        client_socket.connect((self.configTopology.getRandomInterface(rootNode), 20003))
 
-                    packet = {}
-                    packet["servidores"] = servers
-                    protocolPacket = ProtocolPacket("6", packet)
+                        packet = {}
+                        packet["servidores"] = servers
+                        print("Sent protocolPacket with opcode 6")
 
-                    client_socket.send(pickle.dumps(protocolPacket))
-                except Exception as e:
-                    print(str(e))
-                    client_socket.close()
-                finally:
-                    client_socket.close()
+                        protocolPacket = ProtocolPacket("6", packet)
+                        client_socket.sendall(pickle.dumps(protocolPacket))
+                    except Exception as e:
+                        print(str(e))
+                    finally:
+                        client_socket.close()
 
     # description: 
     #   1-) accept new connection, execute demultiplexer for the connection request
@@ -209,7 +213,7 @@ class BootstrapperServer:
         server_socket.listen(2) # Número de clientes que o servidor atende simultâneamente
 
         node = self.configTopology.getNodeNameByAddress(address=self.ip)
-        self.configTopology.aliveNodes[node] = datetime.probenow()
+        self.configTopology.aliveNodes[node] = datetime.now()
 
         checkAliveThread = threading.Thread(target = self.checkAlive)
         checkAliveThread.start()
