@@ -4,6 +4,7 @@ import pickle
 import time
 import threading
 from datetime import datetime
+import sys
 
 class BootstrapperClient:
     def __init__(self, bootstrapperIP, bootstrapperPort):
@@ -13,6 +14,8 @@ class BootstrapperClient:
         self.servers = {}
         self.aliveNeighbours = {}
         self.metricsConstruction = {}
+        # Need to initialize at 0 for every aliveNeighbour
+        self.metricsEphocs = {}
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -79,7 +82,6 @@ class BootstrapperClient:
                     client_socket.send(pickle.dumps(protocolPacket))
                 except Exception as e:
                     print(str(e))
-                    client_socket.close()
                 finally:
                     client_socket.close()
     def opcode_6_handler(self, protocolPacket):
@@ -97,13 +99,12 @@ class BootstrapperClient:
                 # time to the servers although it should be updated to a round trip
                 # ping pong request to the servers
                 for server in servers:
-                    data[server["servidor"]] = {"saltos": 0, "rtt": datetime.now()}
+                    data[server] = {"saltos": 0, "rtt": datetime.now()}
 
                 protocolPacket = ProtocolPacket("7", data)
                 client_socket.send(pickle.dumps(protocolPacket))
             except Exception as e:
                 print(str(e))
-                client_socket.close()
             finally:
                 client_socket.close()
 
@@ -111,12 +112,60 @@ class BootstrapperClient:
         """I'm an overlay layer and need to update my metrics and continue to flood"""
         print("I'm here")
         neighbourName = self.getNeighboorNameByAddress(address)
-        metricsDecision = {}
 
-        for server, server_info in protocolPacket.items():
-            pass
+        data = protocolPacket.data
 
-        pass
+        #update my own server metrics
+        for server, server_info in data.items():
+            server_info = self.updateMetricsByServer(server, server_info, address)
+
+        for alive in self.aliveNeighbours:
+            if alive != neighbourName:
+                try:
+                    client_socket = socket.socket()
+                    client_socket.connect((self.aliveNeighbours[alive][0]["ip"],20003))
+
+                    protocolPacket = ProtocolPacket("7", data)
+                    client_socket.send(pickle.dumps(protocolPacket))
+                except Exception as e:
+                    print(str(e))
+                finally:
+                    client_socket.close()
+
+
+    def updateMetricsByServer(server, server_info, address):
+        """ server layout : 's1' ex. server_info : { 'saltos': 0, 'rtt' : time.now() }"""
+        """ self.metricsConstruction layout :{ 's2' : {'saltos' : {'value' : 2, 'node' : 'n1', 'epoch' : 3}, 'rtt' { 'value' : datetime.now(), 'node' : 'n2', 'epoch' : 2}}} """
+
+        neighbourName = self.getNeighboorNameByAddress(address)
+        metrics_info = self.metricsConstruction
+        saltos_present = metrics_info[server]["saltos"]["value"]
+        rtt_present = metrics_info[server]["rtt"]["value"]
+        saltos_arg = server_info["saltos"]
+        rtt_arg = server_info["rtt"]
+
+        rtt_new = datetime.now() - rtt_arg
+        saltos_new = saltos_arg + 1
+
+        #for all metrics check if there is a better metric
+        # TODO Há o problema em que tenho que atualizar a métrica para cada iteração
+        # Posso criar uma noção de épocas e comparar épocas de métricas.
+        # Assume-se a inicialização de estruturas
+        self.metricsEphocs[neighbourName] += 1
+
+        rtt_updated_dic = {"value" : rtt_new, "node" : neighbourName, "ephocs" : self.metricsEphocs[neighbourName]}
+        saltos_updated_dic = {"value" : saltos_new, "node" : neighbourName, "ephocs" : self.metricsEphocs[neighbourName]}
+        #first update outdated metrics
+        if metrics_info[server]["rtt"]["ephoc"] < self.metricsEphocs[neighbourName] or rtt_new < rtt_present:
+            metrics_info[server]["rtt"] = rtt_updated_dic
+
+        if metrics_info[server]["saltos"]["ephoc"] < self.metricsEphocs[neighbourName] or saltos_new < saltos_present:
+            metrics_info[server]["saltos"] = saltos_updated_dic
+
+        server_info["saltos"] += 1
+        #server_info["rtt"] mantains the same since the goal is to have the original timestamp of the root node, for now.
+
+        return server_info
 
     # description: demultiplex diferent protocol requests
     def demultiplexer(self,conn,address):
@@ -175,12 +224,22 @@ class BootstrapperClient:
             data = pickle.loads(protocolPacket).data
 
 
+            #init server structure
             print(data)
             print("Received from server the initial server and group configuration")
             self.servers = data["server_info"]
             print(data["server_info"])
+            #init group structure
             self.groups = data["group_info"]
             print(data["group_info"])
+
+            #init metricsConstructions with max values
+            for server, server_info in self.servers.keys():
+                self.metricsConstruction[server]["saltos"]["value"] = sys.maxsize
+                self.metricsConstruction[server]["rtt"]["value"] = datetime.now()
+
+            for node in self.aliveNeighbours:
+                self.metricsEphocs[node] = 0
 
         except:
             client_socket.close()
