@@ -75,7 +75,14 @@
       </services>
     </device>
     <device id="9" name="s1" type="host" class="" image="">
-      <position x="410" y="32" lat="47.578875830084634" lon="-122.12679736100267" alt="2.0"/>
+      <position x="296" y="56" lat="47.578657676587675" lon="-122.12833348013851" alt="2.0"/>
+      <services>
+        <service name="DefaultRoute"/>
+        <service name="SSH"/>
+      </services>
+    </device>
+    <device id="10" name="s2" type="host" class="" image="">
+      <position x="466" y="58" lat="47.57863949708856" lon="-122.126042776164" alt="2.0"/>
       <services>
         <service name="DefaultRoute"/>
         <service name="SSH"/>
@@ -126,6 +133,11 @@
     <link node1="9" node2="2">
       <iface1 id="0" name="eth0" mac="00:00:00:aa:00:02" ip4="10.0.8.10" ip4_mask="24" ip6="2001::10" ip6_mask="64"/>
       <iface2 id="2" name="eth2" mac="00:00:00:aa:00:03" ip4="10.0.8.1" ip4_mask="24" ip6="2001::1" ip6_mask="64"/>
+      <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0"/>
+    </link>
+    <link node1="10" node2="2">
+      <iface1 id="0" name="eth0" mac="00:00:00:aa:00:00" ip4="10.0.9.10" ip4_mask="24" ip6="2001::10" ip6_mask="64"/>
+      <iface2 id="3" name="eth3" mac="00:00:00:aa:00:01" ip4="10.0.9.1" ip4_mask="24" ip6="2001::1" ip6_mask="64"/>
       <options delay="0" bandwidth="0" loss="0.0" dup="0" jitter="0" unidirectional="0"/>
     </link>
   </links>
