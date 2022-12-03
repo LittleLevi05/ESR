@@ -16,6 +16,7 @@ class BootstrapperClient:
         self.metricsConstruction = {}
         # Need to initialize at 0 for every aliveNeighbour
         self.metricsEphocs = {}
+        self.lock = threading.RLock()
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -46,91 +47,113 @@ class BootstrapperClient:
         # print("opcode 3!")
         # print(protocolPacket.data)
         # print("Nodo ", str(protocolPacket.data["nodo"], " está desativo!"))
-        self.aliveNeighbours.pop(str(protocolPacket.data["nodo"]))
+        try:
+            self.lock.acquire()
+            self.aliveNeighbours.pop(str(protocolPacket.data["nodo"]))
+        finally:
+            self.lock.release()
         print("Active nodes update ----------------------------")
         print(self.aliveNeighbours)
 
     def opcode_4_handler(self,protocolPacket):
         # print("opcode 4!")
         # print("Nodo ", str(protocolPacket.data["nodo"]), " está ativo!")
-        self.aliveNeighbours[str(protocolPacket.data["nodo"])] = protocolPacket.data["interfaces"]
+        try:
+            self.lock.acquire()
+            self.aliveNeighbours[str(protocolPacket.data["nodo"])] = protocolPacket.data["interfaces"]
+        finally:
+            self.lock.release()
         print("Active nodes update ----------------------------")
         print(self.aliveNeighbours)
 
     def opcode_5_handler(self,protocolPacket, address):
         
         # update metric from address node
-        neighboorName = self.getNeighboorNameByAddress(address)
-        metricsConstruction = {}
-        metricsConstruction["saltos"] = protocolPacket.data["saltos"]
-        metricsConstruction["tempo"] =  datetime.now() - protocolPacket.data["tempo"]
-        self.metricsConstruction[neighboorName] = metricsConstruction
+        try:
+            self.lock.acquire()
+            neighboorName = self.getNeighboorNameByAddress(address)
+            metricsConstruction = {}
+            metricsConstruction["saltos"] = protocolPacket.data["saltos"]
+            metricsConstruction["tempo"] =  datetime.now() - protocolPacket.data["tempo"]
+            self.metricsConstruction[neighboorName] = metricsConstruction
 
-        # send probe packets to neighboors except address node
-        for activeNeighboor in self.aliveNeighbours:
-            if activeNeighboor != neighboorName:
+            # send probe packets to neighboors except address node
+            for activeNeighboor in self.aliveNeighbours:
+                if activeNeighboor != neighboorName:
+                    try:
+                        client_socket = socket.socket()
+                        # select a random interface from the active neighboor to send the message
+                        # here what is relevant is to send the information to the node itself, no matter the interface.
+                        client_socket.connect((self.aliveNeighbours[activeNeighboor][0]["ip"],20003))
+                        print(rootNode)
+                        data = {}
+                        data["saltos"] = protocolPacket.data["saltos"] + 1
+                        data["tempo"] =  protocolPacket.data["tempo"]
+                        protocolPacket = ProtocolPacket("5",data)
+                        client_socket.send(pickle.dumps(protocolPacket))
+                    except Exception as e:
+                        print(str(e))
+                    finally:
+                        client_socket.close()
+        finally:
+            self.lock.release()
+
+    def opcode_6_handler(self, protocolPacket):
+        """I'm a root node and need to start a flood to update metrics to servers im rooting"""
+        print("Received a flood metrics request")
+        try:
+            self.lock.acquire()
+            data = protocolPacket.data
+            servers = data["servidores"]
+            for aliveNeighbour in self.aliveNeighbours:
                 try:
                     client_socket = socket.socket()
-                    # select a random interface from the active neighboor to send the message
-                    # here what is relevant is to send the information to the node itself, no matter the interface.
-                    client_socket.connect((self.aliveNeighbours[activeNeighboor][0]["ip"],20003))
-                    print(rootNode)
+                    print("Alive neigbours ip " + self.aliveNeighbours[aliveneighbour][0]["ip"])
+                    client_socket.connect((self.aliveNeighbours[aliveNeighbour][0]["ip"], 20003))
                     data = {}
-                    data["saltos"] = protocolPacket.data["saltos"] + 1
-                    data["tempo"] =  protocolPacket.data["tempo"]
-                    protocolPacket = ProtocolPacket("5",data)
-                    client_socket.send(pickle.dumps(protocolPacket))
+                    # for now this will be considered as an approximate metric of
+                    # time to the servers although it should be updated to a round trip
+                    # ping pong request to the servers
+                    for server in servers:
+                        data[server] = {"saltos": 0, "rtt": datetime.now()}
+
+                        protocolPacket = ProtocolPacket("7", data)
+                        client_socket.send(pickle.dumps(protocolPacket))
                 except Exception as e:
                     print(str(e))
                 finally:
                     client_socket.close()
-    def opcode_6_handler(self, protocolPacket):
-        """I'm a root node and need to start a flood to update metrics to servers im rooting"""
-        print("Received a flood metrics request")
-        data = protocolPacket.data
-        servers = data["servidores"]
-        for aliveNeighbour in self.aliveNeighbours:
-            try:
-                client_socket = socket.socket()
-                print("Alive neigbours ip " + self.aliveNeighbours[aliveneighbour][0]["ip"])
-                client_socket.connect((self.aliveNeighbours[aliveNeighbour][0]["ip"], 20003))
-                data = {}
-                # for now this will be considered as an approximate metric of
-                # time to the servers although it should be updated to a round trip
-                # ping pong request to the servers
-                for server in servers:
-                    data[server] = {"saltos": 0, "rtt": datetime.now()}
+        finally:
+            self.lock.release()
 
-                protocolPacket = ProtocolPacket("7", data)
-                client_socket.send(pickle.dumps(protocolPacket))
-            except Exception as e:
-                print(str(e))
-            finally:
-                client_socket.close()
 
     def opcode_7_handler(self, protocolPacket, address):
         """I'm an overlay layer and need to update my metrics and continue to flood"""
         print("I'm here")
-        neighbourName = self.getNeighboorNameByAddress(address)
+        try:
+            self.lock.acquire()
+            neighbourName = self.getNeighboorNameByAddress(address)
 
-        data = protocolPacket.data
+            data = protocolPacket.data
 
-        #update my own server metrics
-        for server, server_info in data.items():
-            server_info = self.updateMetricsByServer(server, server_info, address)
+            #update my own server metrics
+            for server, server_info in data.items():
+                server_info = self.updateMetricsByServer(server, server_info, address)
 
-        for alive in self.aliveNeighbours:
-            if alive != neighbourName:
-                try:
-                    client_socket = socket.socket()
-                    client_socket.connect((self.aliveNeighbours[alive][0]["ip"],20003))
+                for alive in self.aliveNeighbours:
+                    if alive != neighbourName:
+                        try:
+                            client_socket = socket.socket()
+                            client_socket.connect((self.aliveNeighbours[alive][0]["ip"],20003))
 
-                    protocolPacket = ProtocolPacket("7", data)
-                    client_socket.send(pickle.dumps(protocolPacket))
-                except Exception as e:
-                    print(str(e))
-                finally:
-                    client_socket.close()
+                            protocolPacket = ProtocolPacket("7", data)
+                            client_socket.send(pickle.dumps(protocolPacket))
+                        except Exception as e:
+                            print(str(e))
+                        finally:
+                            client_socket.close()
+        finally:
+            self.lock.release()
 
 
     def updateMetricsByServer(server, server_info, address):
