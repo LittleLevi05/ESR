@@ -16,6 +16,7 @@ class BootstrapperClient:
         self.metricsConstruction = {}
         # Need to initialize at 0 for every aliveNeighbour
         self.metricsEpochs = {}
+        self.lock = threading.RLock
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -35,10 +36,8 @@ class BootstrapperClient:
                 # print("let's send alive message!")
                 protocolPacket = ProtocolPacket("1","")
                 client_socket.send(pickle.dumps(protocolPacket))
-                client_socket.close()
             except Exception as e:
                 print(str(e))
-                client_socket.close()
             finally:
                 client_socket.close()
 
@@ -185,9 +184,9 @@ class BootstrapperClient:
 
         data = conn.recv(1024)
         try:
+            self.lock.acquire()
             # parser data request into a protocolPacket (opcode + data)
             protocolPacket = pickle.loads(data)
-        
             # invoke an action according to the opcode
             if protocolPacket.opcode == '3':
                 self.opcode_3_handler(protocolPacket = protocolPacket)
@@ -203,6 +202,8 @@ class BootstrapperClient:
                 print("opcode unknown")
         except EOFError:
             print("EOF error")
+        finally:
+            self.lock.release()
 
     # description: 
     #  1-) get current active neighboors 
