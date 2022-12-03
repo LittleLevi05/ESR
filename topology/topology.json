@@ -48,14 +48,21 @@
             "servidor": "s1",
             "ip" : "10.0.8.10",
             "rootNode" : "n2"
-        }
+        },
+	{ 
+	    "servidor": "s2",
+	    "ip" : "10.0.9.10",
+	    "rootNode" : "n2"
+	}
+
     ],
     "grupos": [
         {
             "grupo": 1,
             "ficheiro": "movie.mjpeg",
             "servidores": [
-                {"servidor": "s1"}
+                {"servidor": "s1"},
+		{"servidor": "s2"}
             ]
         }
     ]
