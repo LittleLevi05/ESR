@@ -16,7 +16,7 @@ class BootstrapperClient:
         self.metricsConstruction = {}
         # Need to initialize at 0 for every aliveNeighbour
         self.metricsEpochs = {}
-        self.lock = threading.RLock
+        self.lock = threading.Lock()
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:

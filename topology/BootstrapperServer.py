@@ -12,7 +12,7 @@ class BootstrapperServer:
         self.ip = ip
         self.port = port
         self.configTopology = ConfigTopology(configFile)
-        self.lock = threading.RLock
+        self.lock = threading.Lock()
 
     def isBootstrapper(self, interfaces):
         for interface in interfaces:
