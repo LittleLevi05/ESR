@@ -16,6 +16,7 @@ class BootstrapperClient:
         self.metricsConstruction = {}
         # Need to initialize at 0 for every aliveNeighbour
         self.metricsEpochs = {}
+        self.lock = threading.Lock()
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -29,24 +30,24 @@ class BootstrapperClient:
 
         while True:
             try:
-                client_socket = socket.socket()
-                client_socket.connect((self.bootstrapperIP,self.bootstrapperPort))
                 time.sleep(2)
+                client_socket = socket.socket()
+                client_socket.settimeout(1)
+                client_socket.connect((self.bootstrapperIP,self.bootstrapperPort))
                 # print("let's send alive message!")
                 protocolPacket = ProtocolPacket("1","")
                 client_socket.send(pickle.dumps(protocolPacket))
-                client_socket.close()
             except Exception as e:
-                print(str(e))
-                client_socket.close()
+                print("Estou aqui AliveMessage")
             finally:
                 client_socket.close()
 
     def opcode_3_handler(self,protocolPacket):
-        # print("opcode 3!")
-        # print(protocolPacket.data)
-        # print("Nodo ", str(protocolPacket.data["nodo"], " está desativo!"))
-        self.aliveNeighbours.pop(str(protocolPacket.data["nodo"]))
+        print("opcode 3!")
+        print(protocolPacket.data)
+        print("Nodo ", protocolPacket.data["nodo"], " está desativo!")
+        if protocolPacket.data["nodo"] in self.aliveNeighbours.keys():
+            self.aliveNeighbours.pop(protocolPacket.data["nodo"])
         print("Active nodes update ----------------------------")
         print(self.aliveNeighbours)
 
@@ -82,7 +83,7 @@ class BootstrapperClient:
                     protocolPacket = ProtocolPacket("5",data)
                     client_socket.send(pickle.dumps(protocolPacket))
                 except Exception as e:
-                    print(str(e))
+                    print("Estou aqui 5")
                 finally:
                     client_socket.close()
     def opcode_6_handler(self, protocolPacket):
@@ -93,6 +94,7 @@ class BootstrapperClient:
         for aliveNeighbour in self.aliveNeighbours:
             try:
                 client_socket = socket.socket()
+                client_socket.settimeout(1)
                 #print("Alive neigbours ip " + self.aliveNeighbours[aliveNeighbour][0]["ip"])
                 client_socket.connect((self.aliveNeighbours[aliveNeighbour][0]["ip"], 20003))
                 data = {}
@@ -105,7 +107,7 @@ class BootstrapperClient:
                 protocolPacket = ProtocolPacket("7", data)
                 client_socket.send(pickle.dumps(protocolPacket))
             except Exception as e:
-                print(str(e))
+                print("Estou aqui 6")
             finally:
                 client_socket.close()
 
@@ -121,18 +123,21 @@ class BootstrapperClient:
             server_info = self.updateMetricsByServer(server, server_info, address)
 
 
+
         print("UPDATED METRICS" + str(self.metricsConstruction))
 
-        for alive in self.aliveNeighbours:
-            if alive != neighbourName:
-                try:
-                    client_socket = socket.socket()
-                    client_socket.connect((self.aliveNeighbours[alive][0]["ip"],20003))
+        iteration_neigh = self.aliveNeighbours.copy()
 
+        for alive in iteration_neigh:
+            if alive != neighbourName:
+                client_socket = socket.socket()
+                client_socket.settimeout(1)
+                try:
+                    client_socket.connect((self.aliveNeighbours[alive][0]["ip"],20003))
                     protocolPacket = ProtocolPacket("7", data)
                     client_socket.send(pickle.dumps(protocolPacket))
                 except Exception as e:
-                    print(str(e))
+                    print("Estou aqui 7")
                 finally:
                     client_socket.close()
 
@@ -183,11 +188,13 @@ class BootstrapperClient:
     # description: demultiplex diferent protocol requests
     def demultiplexer(self,conn,address):
 
-        data = conn.recv(1024)
         try:
+            data = conn.recv(1024)
             # parser data request into a protocolPacket (opcode + data)
             protocolPacket = pickle.loads(data)
-        
+         
+            self.lock.acquire()
+           
             # invoke an action according to the opcode
             if protocolPacket.opcode == '3':
                 self.opcode_3_handler(protocolPacket = protocolPacket)
@@ -203,6 +210,10 @@ class BootstrapperClient:
                 print("opcode unknown")
         except EOFError:
             print("EOF error")
+        except socket.error:
+            conn.close()
+        finally:
+            self.lock.release()
 
     # description: 
     #  1-) get current active neighboors 
@@ -210,9 +221,10 @@ class BootstrapperClient:
     #  3-) listen to probe packets 
     def service(self):
         # socket to initially get current activate neighboors
-        client_socket = socket.socket()
 
         try:
+            self.lock.acquire()
+            client_socket = socket.socket()
             client_socket.connect((self.bootstrapperIP,self.bootstrapperPort))
 
             #ask for info of alive Neighbours
@@ -255,17 +267,20 @@ class BootstrapperClient:
             for node in self.aliveNeighbours:
                 self.metricsEpochs[node] = 0
 
-        except:
-            client_socket.close()
         finally:
             client_socket.close()
+            self.lock.release()
 
         # socket to server can communicate with the client the neighboors changes
-        server_socket = socket.socket() 
-        server_socket.bind(("0.0.0.0",20003))
-        server_socket.listen(2) 
+        
+        
+        
 
         try:
+            server_socket = socket.socket() 
+            server_socket.bind(("0.0.0.0",20003))
+            server_socket.listen(2) 
+            
             while(True):
                 print("wait server to send neighboor updates")
                 conn, address = server_socket.accept()

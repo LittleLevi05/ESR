@@ -58,14 +58,12 @@ class BootstrapperServer:
                                     print(str(e))
                                 finally:
                                     client_socket.close()
-                            else:
-                                print(str(node), " is current alive")
-
-                                # eliminate nodes not actives
-                                for node in nodesNotAlive:
-                                    self.configTopology.aliveNodes.pop(node)
             finally:
                 self.lock.release()
+
+            for node in nodesNotAlive: 
+                if node in self.configTopology.aliveNodes:
+                    self.configTopology.aliveNodes.pop(node)
 
             print("----------------")
 
