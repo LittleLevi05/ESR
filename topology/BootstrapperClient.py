@@ -408,7 +408,7 @@ class BootstrapperClient:
             elif protocolPacket.opcode == '8':
                 self.opcode_8_handler(protocolPacket = protocolPacket, address = address[0])
             elif protocolPacket.opcode == '9':
-                self.opcode_9_handler(protocolPacket= protocolPacket)
+                self.opcode_9_handler(protocolPacket= protocolPacket, address = address)
             elif protocolPacket.opcode == '10':
                 self.opcode_10_handler(protocolPacket = protocolPacket, address = address)
             elif protocolPacket.opcode == '11':
