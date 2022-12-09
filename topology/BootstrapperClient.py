@@ -16,7 +16,10 @@ class BootstrapperClient:
         self.metricsConstruction = {}
         # Need to initialize at 0 for every aliveNeighbour
         self.metricsEpochs = {}
+        self.activeClientsByNode = {}
+        self.metricsGroup = {}
         self.lock = threading.Lock()
+        self.metrics = ["rtt", "saltos"]
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -117,14 +120,26 @@ class BootstrapperClient:
 
         data = protocolPacket.data
 
+        old_group_metrics = self.metricsGroup.copy()
         print("OUTDATED METRICS" + str(self.metricsConstruction))
         #update my own server metrics
         for server, server_info in data.items():
             server_info = self.updateMetricsByServer(server, server_info, address)
 
+        for group in self.groups:
+            self.updateNodeByGroup(self,group)
 
+        new_group_metrics = self.metricsGroup.copy()
+
+        #Send to the above nodes that I no longer need some connections or request new connections based on active groups.
+        #Check all the groups that have at least one client using them and request to the new best node, and cut to the previous node
 
         print("UPDATED METRICS" + str(self.metricsConstruction))
+
+        print("UPDATED METRICS GROUP" + str(self.metricsGroup))
+
+
+        self.sendChangesMessages(old_group_metrics, new_group_metrics)
 
         iteration_neigh = self.aliveNeighbours.copy()
 
@@ -141,6 +156,50 @@ class BootstrapperClient:
                 finally:
                     client_socket.close()
 
+    def sendChangesMessages(self, old, new):
+        # Lembrar que no futuro se houver adição de grupos dinâmicos tenho que
+        # garantir que self.groups é atualizado
+        #iterate through groups
+        for group in self.groups:
+            for metric in self.metrics:
+                #there was a change, need to send messages
+                old_node = old[group][metric]
+                new_node = new[group][metric]
+                if old_node != new_node:
+                    # Send protocol message number 8 to indicate I want
+                    # to listen to a new stream
+                    client_socket = socket.socket()
+                    client_socket.settimeout(1)
+                    try:
+                        client_socket.connect((self.aliveNeighbours[new_node][0]["ip"], 20003))
+                        data = {}
+                        data["group"] = group
+                        data["metric"] = metric
+                        data["action"] = "START"
+                        protocolPacket = ProtocolPacket("8", data)
+                        client_socket.send(pickle.dumps(protocolPacket))
+                    except Exception as e:
+                        print("Estou aqui enviar que quero um grupo")
+                    finally:
+                        client_socket.close()
+
+                    # Send protocol message number 9 to indicate I
+                    # No longer want to listen to the old stream group
+                    client_socket = socket.socket()
+                    client_socket.settimeout(1)
+                    try:
+                        client_socket.connect((self.aliveNeighbours[old_node][0]["ip"], 20003))
+                        data = {}
+                        data["group"] = group
+                        data["metric"] = metric
+                        data["action"] = "STOP"
+                        protocolPacket = ProtocolPacket("8", data)
+                        client_socket.send(pickle.dumps(protocolPacket))
+                    except Exception as e:
+                        print("Estou aqui enviar que já não quero um grupo")
+                    finally:
+                        client_socket.close()
+
 
     def getMaxEpoch(self):
         r = 0
@@ -154,6 +213,8 @@ class BootstrapperClient:
     def updateMetricsByServer(self, server, server_info, address):
         """ server layout : 's1' ex. server_info : { 'saltos': 0, 'rtt' : time.now() }"""
         """ self.metricsConstruction layout :{ 's2' : {'saltos' : {'value' : 2, 'node' : 'n1', 'epoch' : 3}, 'rtt' { 'value' : datetime.now(), 'node' : 'n2', 'epoch' : 2}}} """
+
+        #send to neighbours
 
         neighbourName = self.getNeighboorNameByAddress(address)
         metrics_info = self.metricsConstruction
@@ -183,7 +244,81 @@ class BootstrapperClient:
         server_info["saltos"] += 1
         #server_info["rtt"] mantains the same since the goal is to have the original timestamp of the root node, for now.
 
+
+
         return server_info
+
+    def opcode_8_handler(self, protocolPacket, address):
+        """I'm a overlay layer node and received a message to create or a remove  connection with you"""
+        #self.activeClientsByNode add mais um
+        node = self.getNeighboorNameByAddress(address)
+
+        data = protocolPacket.data
+        group = data["group"]
+        metric = data["metric"]
+        action = data["action"]
+
+        self.checkAndInitActiveClients(node, metric, group)
+
+        if action == "STOP":
+            cur = max(0, cur - 1)
+        elif action == "START":
+            cur += 1
+        else:
+            pass
+
+        self.activeClientsByNode[node][metric][group] = cur
+
+
+    def opcode_9_handler(self, protocolPacket, address):
+        """ I'm a overlay node and a client decided to stopped/requested to watch a stream.
+        Need to tell my best neighbour for each metric (way to the root) """
+        # make functions to check init and init
+        # make function to update active interfaces
+
+        node = self.getNeighboorNameByAddress(address)
+        data = protocolPacket.data
+        group = data["group"]
+        metric = data["metric"]
+        action = data["action"]
+        self.checkAndInitActiveClients(node, metric, group)
+
+        cur = self.activeClientsByNode[node][metric][group]
+        if action == "STOP":
+            cur = max(0, cur - 1)
+        elif action == "START":
+            cur += 1
+        else:
+            pass
+
+        self.activeClientsByNode[node][metric][group] = cur
+
+        parent_node = self.metricsGroup[group][metric]
+
+        client_socket = socket.socket()
+        client_socket.settimeout(1)
+
+        try:
+            client_socket.connect((self.aliveNeighbours[parent_node][0]["ip"],20003))
+            protocolPacket = ProtocolPacket("9", data)
+            client_socket.send(pickle.dumps(protocolPacket))
+        except Exception as e:
+            print("Estou aqui 9")
+        finally:
+            client_socket.close()
+
+    def checkAndInitActiveClients(self, node, metric, group):
+        # init if new node
+        if node not in self.activeClientsByNode.keys():
+            self.activeClientsByNode[node] = {}
+
+        # init if new metric
+        if metric not in self.activeClientsByNode[node].keys():
+            self.activeClientsByNode[node][metric] = {}
+
+        # init if new group
+        if group not in self.activeClientsByNode[node][metric].keys():
+            self.activeClientsByNode[node][metric][group] = 0
 
     # description: demultiplex diferent protocol requests
     def demultiplexer(self,conn,address):
@@ -206,6 +341,8 @@ class BootstrapperClient:
                 self.opcode_6_handler(protocolPacket = protocolPacket)
             elif protocolPacket.opcode == '7':
                 self.opcode_7_handler(protocolPacket = protocolPacket, address=address[0])
+            elif protocolPacket.opcode == '8':
+                self.opcode_8_handler(protocolPacket = protocolPacket, address = address[0])
             else:
                 print("opcode unknown")
         except EOFError:
@@ -257,6 +394,7 @@ class BootstrapperClient:
             self.servers = data["server_info"]
             print(data["server_info"])
             #init group structure
+            # Structure self.groups = { group_no : ["s3", "s1", "s4"] }
             self.groups = data["group_info"]
             print(data["group_info"])
 
@@ -266,6 +404,13 @@ class BootstrapperClient:
 
             for node in self.aliveNeighbours:
                 self.metricsEpochs[node] = 0
+
+            # Structure self.activeClientsByNode = { neighbour_node : { group_no : count } }
+            for node in self.aliveNeighbours:
+                groups_count = {}
+                for group in self.groups:
+                    groups_count[group] = 0
+                self.activeClientsByNode[node] = groups_count
 
         finally:
             client_socket.close()
@@ -296,3 +441,44 @@ class BootstrapperClient:
     
         aliveMessageThread = threading.Thread(target = self.aliveMessage)
         aliveMessageThread.start()
+
+
+    #routing functions
+    def getClosestNeighbour(self, group, metric):
+        servers = self.groups[group]
+        node_min = self.getMinNode(servers, metric)
+        return node_min
+
+
+
+    # Por testar
+    def getMinNode(self, servers, metric):
+        servers_aux = servers.copy()
+        min = None
+        if len(servers_aux) > 0:
+            min = self.metricsConstruction[servers_aux[0]][metric]["value"]
+            server_min = self.metricsConstruction[servers_aux[0]][metric]["node"]
+            servers_aux.pop(servers_aux[0])
+
+
+        for server in servers_aux:
+            metric = self.metricsConstruction[server][metric]["value"]
+            if metric < min:
+                min = metric
+                node_min = self.metricsConstruction[server][metric]["node"]
+
+
+
+        return node_min
+
+    # por testar
+    def updateNodeByGroup(self, group):
+        """ self.metricsGroup = { group : { metric : node } }"""
+        servers = self.groups[group]
+        for metric in self.metrics:
+            node_min = self.getMinNode(servers, metric)
+            #inicializar metricsGroup
+            if group not in self.metricsGroup.keys():
+                self.metricsGroup[group] = {}
+
+            self.metricsGroup[group][metric] = node_min
