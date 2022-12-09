@@ -1,7 +1,11 @@
 from tkinter import *
+import sys
 import tkinter.messagebox
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
+from ProtocolPacket import ProtocolPacket
+import pickle
+
 # append the path of the
 # parent directory
 sys.path.append("..")
@@ -16,27 +20,27 @@ class Client:
 	READY = 1
 	PLAYING = 2
 	state = INIT
-	
+
 	SETUP = 0
 	PLAY = 1
 	PAUSE = 2
 	TEARDOWN = 3
-	
+
 	# Initiation..
-	def __init__(self, master, serveraddr, serverport, rtpport, filename):
+	def __init__(self, master, serveraddr, serverport, rtpport, group):
 		self.master = master
 		self.master.protocol("WM_DELETE_WINDOW", self.handler)
 		self.createWidgets()
 		self.serverAddr = serveraddr
 		self.serverPort = int(serverport)
 		self.rtpPort = int(rtpport)
-		self.fileName = filename
 		self.rtspSeq = 0
 		self.sessionId = 0
 		self.requestSent = -1
 		self.teardownAcked = 0
-		self.connectToServer()
+		#self.connectToServer()
 		self.frameNbr = 0
+		self.group = group
 
 	def __create_request(self, method):
 		request = method + " " + self.fileName + " " + "RTSP/1.0" + "\n"
@@ -46,12 +50,12 @@ class Client:
 
 	def createWidgets(self):
 		"""Build GUI."""
-		# Create Setup button
+
 		self.setup = Button(self.master, width=20, padx=3, pady=3)
 		self.setup["text"] = "Setup"
 		self.setup["command"] = self.setupMovie
 		self.setup.grid(row=1, column=0, padx=2, pady=2)
-		
+
 		# Create Play button		
 		self.start = Button(self.master, width=20, padx=3, pady=3)
 		self.start["text"] = "Play"
@@ -63,44 +67,89 @@ class Client:
 		self.pause["text"] = "Pause"
 		self.pause["command"] = self.pauseMovie
 		self.pause.grid(row=1, column=2, padx=2, pady=2)
-		
-		# Create Teardown button
+
 		self.teardown = Button(self.master, width=20, padx=3, pady=3)
 		self.teardown["text"] = "Teardown"
 		self.teardown["command"] =  self.exitClient
 		self.teardown.grid(row=1, column=3, padx=2, pady=2)
 		
 		# Create a label to display the movie
-		self.label = Label(self.master, height=19)
+		self.label = Label(self.master, height=40)
 		self.label.grid(row=0, column=0, columnspan=4, sticky=W+E+N+S, padx=5, pady=5) 
 	
 	def setupMovie(self):
 		"""Setup button handler."""
 		if self.state == self.INIT:
-			self.sendRtspRequest(self.SETUP)
-	
+			self.state = self.READY
+			socket_server = socket.socket()
+			socket_server.settimeout(1)
+			try:
+				socket_server.connect((self.serverAddr, self.serverPort))
+				packet = ProtocolPacket("10", "")
+				socket_server.send(pickle.dumps(packet))
+			except:
+				print("Estou aqui setupMovie")
+			finally:
+				socket_server.close()
+
 	def exitClient(self):
 		"""Teardown button handler."""
-		self.sendRtspRequest(self.TEARDOWN)		
+		socket_server = socket.socket()
+		socket_server.settimeout(1)
+
+		try:
+			socket_server.connect((self.serverAddr, self.serverPort))
+			packet = ProtocolPacket("11", "")
+			socket_server.send(pickle.dumps(packet))
+		except:
+			print("Estou aqui exitClient")
+		finally:
+			socket_server.close()
+
 		self.master.destroy() # Close the gui window
 		os.remove(CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT) # Delete the cache image from video
 
 	def pauseMovie(self):
 		"""Pause button handler."""
 		if self.state == self.PLAYING:
-			self.sendRtspRequest(self.PAUSE)
-	
+			print("Pause")
+			#self.playEvent.set()
+			self.state = self.READY
+			self.sendRequest(self.PAUSE)
+
 	def playMovie(self):
 		"""Play button handler."""
 		if self.state == self.READY:
 			# Create a new thread to listen for RTP packets
 			print("Play")
-			threading.Thread(target=self.listenRtp).start()
-			self.playEvent = threading.Event()
-			self.playEvent.clear()
-			self.sendRtspRequest(self.PLAY)
-	
-	def listenRtp(self):		
+			#threading.Thread(target=self.listenRtp).start()
+			#self.playEvent = threading.Event()
+			#self.playEvent.clear()
+			self.state = self.PLAYING
+			self.sendRequest(self.PLAY)
+
+
+	def sendRequest(self, type):
+		socket_server = socket.socket()
+		socket_server.settimeout(1)
+
+		data = {}
+		data["group"] = group
+		data["metric"] = "rtt"
+		if type == self.PLAY:
+			data["action"] = "START"
+		elif type == self.PAUSE:
+			data["action"] = "STOP"
+		try:
+			socket_server.connect((self.serverAddr, self.serverPort))
+			packet = ProtocolPacket("9", data)
+			socket_server.send(pickle.dumps(packet))
+		except:
+			print("Estou aqui sendRequest")
+		finally:
+			socket_server.close()
+
+	def listenRtp(self):
 		"""Listen for RTP packets."""
 		while True:
 			try:
@@ -148,7 +197,7 @@ class Client:
 		try:
 			self.rtspSocket.connect((self.serverAddr, self.serverPort))
 		except:
-			tkMessageBox.showwarning('Connection Failed', 'Connection to \'%s\' failed.' %self.serverAddr)
+			tkinter.messagebox.showwarning('Connection Failed', 'Connection to \'%s\' failed.' %self.serverAddr)
 	
 	def sendRtspRequest(self, requestCode):
 		"""Send RTSP request to the server."""	
@@ -281,12 +330,12 @@ class Client:
 			self.rtpSocket.bind((self.serverAddr ,self.rtpPort))
 			print('\nBind \n')
 		except:
-			tkMessageBox.showwarning('Unable to Bind', 'Unable to bind PORT=%d' %self.rtpPort)
+			tkinter.messagebox.showwarning('Unable to Bind', 'Unable to bind PORT=%d' %self.rtpPort)
 
 	def handler(self):
 		"""Handler on explicitly closing the GUI window."""
 		self.pauseMovie()
-		if tkMessageBox.askokcancel("Quit?", "Are you sure you want to quit?"):
+		if tkinter.messagebox.askokcancel("Quit?", "Are you sure you want to quit?"):
 			self.exitClient()
 		else: # When the user presses cancel, resume playing.
 			self.playMovie()
