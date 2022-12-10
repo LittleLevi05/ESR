@@ -132,7 +132,7 @@ class BootstrapperClient:
             server_info = self.updateMetricsByServer(server, server_info, address)
 
         for group in self.groups:
-            self.updateNodeByGroup(self,group)
+            self.updateNodeByGroup(group)
 
         new_group_metrics = self.metricsGroup.copy()
 
@@ -144,7 +144,9 @@ class BootstrapperClient:
         print("UPDATED METRICS GROUP" + str(self.metricsGroup))
 
 
-        self.sendChangesMessages(old_group_metrics, new_group_metrics)
+        
+        if self.anyClientActive():
+            self.sendChangesMessages(old_group_metrics, new_group_metrics)
 
         iteration_neigh = self.aliveNeighbours.copy()
 
@@ -161,11 +163,30 @@ class BootstrapperClient:
                 finally:
                     client_socket.close()
 
+
+    def anyClientActive(self):
+        print("ACTIVE CLIENTS: " + str(self.activeClientsByNode))
+        for node in self.activeClientsByNode.keys():
+            for metric in self.activeClientsByNode[node].keys():
+                for group in self.activeClientsByNode[node][metric].keys():
+                    if self.activeClientsByNode[node][metric][group] > 0:
+                        return True
+        
+        return False
+
+
+
     def sendChangesMessages(self, old, new):
         # Lembrar que no futuro se houver adição de grupos dinâmicos tenho que
         # garantir que self.groups é atualizado
         #iterate through groups
-        for group in self.groups:
+        print("OLD: " + str(old))
+        print("NEW: " + str(new))
+
+        if len(old) == 0:
+            return
+
+        for group in self.groups.keys():
             for metric in self.metrics:
                 #there was a change, need to send messages
                 old_node = old[group][metric]
@@ -475,12 +496,13 @@ class BootstrapperClient:
             for node in self.aliveNeighbours:
                 self.metricsEpochs[node] = 0
 
-            # Structure self.activeClientsByNode = { neighbour_node : { group_no : count } }
-            for node in self.aliveNeighbours:
-                groups_count = {}
-                for group in self.groups:
-                    groups_count[group] = 0
-                self.activeClientsByNode[node] = groups_count
+            ## Structure helf.activeClientsByNode = { neighbour_node : { metric : {group_no : count } }}
+            #for node in self.aliveNeighbours:
+            #    groups_count = {}
+            #    for metric in self.metrics:
+            #        for group in self.groups:
+            #            groups_count[metric][group] = 0
+            #    self.activeClientsByNode[node] = groups_count
 
         finally:
             client_socket.close()
@@ -525,16 +547,17 @@ class BootstrapperClient:
     def getMinNode(self, servers, metric):
         servers_aux = servers.copy()
         min = None
+        node_min = None
         if len(servers_aux) > 0:
             min = self.metricsConstruction[servers_aux[0]][metric]["value"]
-            server_min = self.metricsConstruction[servers_aux[0]][metric]["node"]
-            servers_aux.pop(servers_aux[0])
+            node_min = self.metricsConstruction[servers_aux[0]][metric]["node"]
+            servers_aux.pop(0)
 
 
         for server in servers_aux:
-            metric = self.metricsConstruction[server][metric]["value"]
-            if metric < min:
-                min = metric
+            metric_val = self.metricsConstruction[server][metric]["value"]
+            if metric_val < min:
+                min = metric_val
                 node_min = self.metricsConstruction[server][metric]["node"]
 
 

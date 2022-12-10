@@ -6,11 +6,7 @@ import socket, threading, sys, traceback, os
 from ProtocolPacket import ProtocolPacket
 import pickle
 
-# append the path of the
-# parent directory
-sys.path.append("..")
-
-from helpers import RtpPacket
+import RtpPacket
 
 CACHE_FILE_NAME = "cache-"
 CACHE_FILE_EXT = ".jpg"
