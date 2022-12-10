@@ -3,7 +3,7 @@ import sys
 import tkinter.messagebox
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
-from ProtocolPacket import ProtocolPacket
+from ..topology.ProtocolPacket import ProtocolPacket
 import pickle
 
 # append the path of the
