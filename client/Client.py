@@ -3,7 +3,8 @@ import sys
 import tkinter.messagebox
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
-from ..topology.ProtocolPacket import ProtocolPacket
+sys.path.append("..")
+from topology.ProtocolPacket import ProtocolPacket
 import pickle
 
 import RtpPacket
@@ -36,7 +37,7 @@ class Client:
 		self.teardownAcked = 0
 		#self.connectToServer()
 		self.frameNbr = 0
-		self.group = group
+		self.group = 1
 
 	def __create_request(self, method):
 		request = method + " " + self.fileName + " " + "RTSP/1.0" + "\n"
@@ -130,7 +131,7 @@ class Client:
 		socket_server.settimeout(1)
 
 		data = {}
-		data["group"] = group
+		data["group"] =self.group
 		data["metric"] = "rtt"
 		if type == self.PLAY:
 			data["action"] = "START"

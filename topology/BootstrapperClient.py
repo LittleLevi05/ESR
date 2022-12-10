@@ -296,16 +296,23 @@ class BootstrapperClient:
         self.activeClientsByNode[node][metric][group] = cur
 
 
+        print("ACTIVE CLIENTS : " + str(self.activeClientsByNode))
+
+
     def opcode_9_handler(self, protocolPacket, address):
         """ I'm a overlay node and a client decided to stopped/requested to watch a stream.
         Need to tell my best neighbour for each metric (way to the root) """
         # make functions to check init and init
         # make function to update active interfaces
 
-        if not self.entryPoint:
+
+        print("I'm LOGICAL VALUE: " + str(self.entryPoint))
+        if self.entryPoint == False:
             node = self.getNeighboorNameByAddress(address)
+            print("NODE: " + str(node))
         else:
             node = self.getClient(address)
+            print("NODE: " + str(node))
 
         data = protocolPacket.data
         group = data["group"]
@@ -321,21 +328,27 @@ class BootstrapperClient:
         else:
             pass
 
-        self.activeClientsByNode[node][metric][group] = cur
+        if cur != 0:
+            self.activeClientsByNode[node][metric][group] = cur
+        else:
+            self.activeClientsByNode.pop(node)
 
-        parent_node = self.metricsGroup[group][metric]
+        print("ACTIVE CLIENTS : " + str(self.activeClientsByNode))
 
-        client_socket = socket.socket()
-        client_socket.settimeout(1)
+        if len(self.metricsGroup) != 0:
+            parent_node = self.metricsGroup[group][metric]
 
-        try:
-            client_socket.connect((self.aliveNeighbours[parent_node][0]["ip"],20003))
-            protocolPacket = ProtocolPacket("9", data)
-            client_socket.send(pickle.dumps(protocolPacket))
-        except Exception as e:
-            print("Estou aqui 9")
-        finally:
-            client_socket.close()
+            client_socket = socket.socket()
+            client_socket.settimeout(1)
+
+            try:
+                client_socket.connect((self.aliveNeighbours[parent_node][0]["ip"],20003))
+                protocolPacket = ProtocolPacket("9", data)
+                client_socket.send(pickle.dumps(protocolPacket))
+            except Exception as e:
+                print("Estou aqui 9")
+            finally:
+                client_socket.close()
 
     def sendRequestPacket(self, node, data, opcode):
         client_socket = socket.socket()
@@ -356,7 +369,9 @@ class BootstrapperClient:
         self.entryPoint = True
         client_name = "c" + str(self.clientNo)
         self.clientNo +=1
+        print("IP :" + address)
         self.aliveClients[client_name] = address
+        print(self.aliveClients)
 
     def opcode_11_handler(self, protocolPacket, address):
         """I'm an entryPoint and I'll remove a client"""
@@ -372,9 +387,9 @@ class BootstrapperClient:
                     data["action"] = "STOP"
                     #If the client didn't pause we will
                     #Will send the stop request for my parent nodes
-                    for metric in activeClientsByNode[client]:
+                    for metric in self.activeClientsByNode[client]:
                         data["metric"] = metric
-                        for group in activeClientsByNode[group]:
+                        for group in self.activeClientsByNode[client][metric]:
                             data["group"] = group
                             parent_node = self.metricsGroup[group][metric]
                             self.sendRequestPacket(parent_node, data, "9")
@@ -389,7 +404,7 @@ class BootstrapperClient:
 
     def getClient(self, address):
         for client, ip in self.aliveClients.items():
-            if ip == adress:
+            if ip == address:
                 return client
 
     def checkAndInitActiveClients(self, node, metric, group):
@@ -429,11 +444,11 @@ class BootstrapperClient:
             elif protocolPacket.opcode == '8':
                 self.opcode_8_handler(protocolPacket = protocolPacket, address = address[0])
             elif protocolPacket.opcode == '9':
-                self.opcode_9_handler(protocolPacket= protocolPacket, address = address)
+                self.opcode_9_handler(protocolPacket= protocolPacket, address = address[0])
             elif protocolPacket.opcode == '10':
-                self.opcode_10_handler(protocolPacket = protocolPacket, address = address)
+                self.opcode_10_handler(protocolPacket = protocolPacket, address = address[0])
             elif protocolPacket.opcode == '11':
-                self.opcode_11_handler(protocolPacket, address)
+                self.opcode_11_handler(protocolPacket, address[0])
             else:
                 print("opcode unknown")
         except EOFError:
