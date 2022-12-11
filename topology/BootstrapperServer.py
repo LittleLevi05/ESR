@@ -155,6 +155,8 @@ class BootstrapperServer:
         data = {}
         data["server_info"] = self.configTopology.getServers()
         data["group_info"] = self.configTopology.getGroups()
+        node = self.configTopology.getNodeNameByAddress(address=address)
+        data["node_name"] = node
 
         # opcode -1 because this is only supposed to be used on initiation
         # when there is a change in groups and server an alert on the modification
@@ -189,8 +191,10 @@ class BootstrapperServer:
             self.lock.release()
 
     def rootNodesProbeReminder(self):
+        epoch = 1
         while True:
             time.sleep(9)
+            epoch += 1
             try:
                 self.lock.acquire()
                 rootsAndServers = self.configTopology.getRootNodesAndServers()
@@ -202,6 +206,7 @@ class BootstrapperServer:
 
                             packet = {}
                             packet["servidores"] = servers
+                            packet["epoch"] = epoch
                             print("Sent protocolPacket with opcode 6")
 
                             protocolPacket = ProtocolPacket("6", packet)
@@ -228,8 +233,8 @@ class BootstrapperServer:
 
         checkAliveThread = threading.Thread(target = self.checkAlive)
         checkAliveThread.start()
-        probePacketThread = threading.Thread(target = self.probePacket)
-        probePacketThread.start()
+        #probePacketThread = threading.Thread(target = self.probePacket)
+        #probePacketThread.start()
         rootNodesReminderThread = threading.Thread(target = self.rootNodesProbeReminder)
         rootNodesReminderThread.start()
 

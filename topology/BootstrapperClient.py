@@ -17,12 +17,14 @@ class BootstrapperClient:
         self.clientNo = 0
         self.metricsConstruction = {}
         # Need to initialize at 0 for every aliveNeighbour
-        self.metricsEpochs = {}
         self.activeClientsByNode = {}
         self.metricsGroup = {}
         self.lock = threading.Lock()
         self.metrics = ["rtt", "saltos"]
         self.entryPoint = False
+        self.rootNode = False
+        self.nodeName = ""
+        self.curEpoch = -1
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -63,7 +65,6 @@ class BootstrapperClient:
         # print("opcode 4!")
         # print("Nodo ", str(protocolPacket.data["nodo"]), " está ativo!")
         self.aliveNeighbours[str(protocolPacket.data["nodo"])] = protocolPacket.data["interfaces"]
-        self.metricsEpochs[protocolPacket.data["nodo"]] = self.getMaxEpoch()
 
         print("Active nodes update ----------------------------")
         print(self.aliveNeighbours)
@@ -98,7 +99,9 @@ class BootstrapperClient:
         """I'm a root node and need to start a flood to update metrics to servers im rooting"""
         print("Received a flood metrics request")
         data = protocolPacket.data
+        self.rootNode = True
         servers = data["servidores"]
+        epoch = data["epoch"]
         for aliveNeighbour in self.aliveNeighbours:
             try:
                 client_socket = socket.socket()
@@ -106,11 +109,25 @@ class BootstrapperClient:
                 #print("Alive neigbours ip " + self.aliveNeighbours[aliveNeighbour][0]["ip"])
                 client_socket.connect((self.aliveNeighbours[aliveNeighbour][0]["ip"], 20003))
                 data = {}
+                data_servers = {}
                 # for now this will be considered as an approximate metric of
                 # time to the servers although it should be updated to a round trip
                 # ping pong request to the servers
                 for server in servers:
-                    data[server] = {"saltos": 0, "rtt": datetime.now()}
+                    data_servers[server] = {"saltos": 0, "rtt": datetime.now()}
+
+                data["servers"] = data_servers
+                data["visited"] = [self.nodeName]
+                data["epoch"] = epoch
+                self.curEpoch = epoch
+
+                for server, server_info in data_servers.items():
+                    rtt_updated_dic = {"value" : datetime.now() - server_info["rtt"], "node" : self.nodeName, "epoch" : epoch}
+                    saltos_updated_dic = {"value" : 0, "node" : self.nodeName, "epoch" : epoch}
+                    self.metricsConstruction[server]["rtt"] = rtt_updated_dic
+                    self.metricsConstruction[server]["saltos"] = saltos_updated_dic
+
+
 
                 protocolPacket = ProtocolPacket("7", data)
                 client_socket.send(pickle.dumps(protocolPacket))
@@ -124,12 +141,16 @@ class BootstrapperClient:
         neighbourName = self.getNeighboorNameByAddress(address)
 
         data = protocolPacket.data
+        data_servers = data["servers"]
+        visited = data["visited"]
+        epoch = data["epoch"]
+        self.curEpoch = epoch
 
         old_group_metrics = self.metricsGroup.copy()
         print("OUTDATED METRICS" + str(self.metricsConstruction))
         #update my own server metrics
-        for server, server_info in data.items():
-            server_info = self.updateMetricsByServer(server, server_info, address)
+        for server, server_info in data_servers.items():
+            server_info = self.updateMetricsByServer(server, server_info, address, epoch)
 
         for group in self.groups:
             self.updateNodeByGroup(group)
@@ -139,7 +160,7 @@ class BootstrapperClient:
         #Send to the above nodes that I no longer need some connections or request new connections based on active groups.
         #Check all the groups that have at least one client using them and request to the new best node, and cut to the previous node
 
-        print("UPDATED METRICS" + str(self.metricsConstruction))
+        #print("UPDATED METRICS" + str(self.metricsConstruction))
 
         print("UPDATED METRICS GROUP" + str(self.metricsGroup))
 
@@ -151,7 +172,9 @@ class BootstrapperClient:
         iteration_neigh = self.aliveNeighbours.copy()
 
         for alive in iteration_neigh:
-            if alive != neighbourName:
+            if alive != neighbourName and alive not in visited:
+                visited.append(self.nodeName)
+                data["visited"] = visited
                 client_socket = socket.socket()
                 client_socket.settimeout(1)
                 try:
@@ -236,8 +259,8 @@ class BootstrapperClient:
         return r
         
 
-    def updateMetricsByServer(self, server, server_info, address):
-        """ server layout : 's1' ex. server_info : { 'saltos': 0, 'rtt' : time.now() }"""
+    def updateMetricsByServer(self, server, server_info, address, epoch):
+        """ server layout : 's1' ex. server_info : { 'saltos': 0, 'rtt' : time.now()}"""
         """ self.metricsConstruction layout :{ 's2' : {'saltos' : {'value' : 2, 'node' : 'n1', 'epoch' : 3}, 'rtt' { 'value' : datetime.now(), 'node' : 'n2', 'epoch' : 2}}} """
 
         #send to neighbours
@@ -256,15 +279,14 @@ class BootstrapperClient:
         # TODO Há o problema em que tenho que atualizar a métrica para cada iteração
         # Posso criar uma noção de épocas e comparar épocas de métricas.
         # Assume-se a inicialização de estruturas
-        self.metricsEpochs[neighbourName] += 1
 
-        rtt_updated_dic = {"value" : rtt_new, "node" : neighbourName, "epoch" : self.metricsEpochs[neighbourName]}
-        saltos_updated_dic = {"value" : saltos_new, "node" : neighbourName, "epoch" : self.metricsEpochs[neighbourName]}
+        rtt_updated_dic = {"value" : rtt_new, "node" : neighbourName, "epoch" : epoch}
+        saltos_updated_dic = {"value" : saltos_new, "node" : neighbourName, "epoch" : epoch}
         #first update outdated metrics
-        if metrics_info[server]["rtt"]["epoch"] < self.metricsEpochs[neighbourName] or rtt_new < rtt_present:
+        if metrics_info[server]["rtt"]["epoch"] < epoch or rtt_new < rtt_present:
             metrics_info[server]["rtt"] = rtt_updated_dic
 
-        if metrics_info[server]["saltos"]["epoch"] < self.metricsEpochs[neighbourName] or saltos_new < saltos_present:
+        if metrics_info[server]["saltos"]["epoch"]  < epoch or saltos_new < saltos_present:
             metrics_info[server]["saltos"] = saltos_updated_dic
 
         server_info["saltos"] += 1
@@ -337,18 +359,18 @@ class BootstrapperClient:
 
         if len(self.metricsGroup) != 0:
             parent_node = self.metricsGroup[group][metric]
+            if parent_node != self.nodeName:
+                client_socket = socket.socket()
+                client_socket.settimeout(1)
 
-            client_socket = socket.socket()
-            client_socket.settimeout(1)
-
-            try:
-                client_socket.connect((self.aliveNeighbours[parent_node][0]["ip"],20003))
-                protocolPacket = ProtocolPacket("9", data)
-                client_socket.send(pickle.dumps(protocolPacket))
-            except Exception as e:
-                print("Estou aqui 9")
-            finally:
-                client_socket.close()
+                try:
+                    client_socket.connect((self.aliveNeighbours[parent_node][0]["ip"],20003))
+                    protocolPacket = ProtocolPacket("9", data)
+                    client_socket.send(pickle.dumps(protocolPacket))
+                except Exception as e:
+                    print("Estou aqui 9")
+                finally:
+                    client_socket.close()
 
     def sendRequestPacket(self, node, data, opcode):
         client_socket = socket.socket()
@@ -504,12 +526,12 @@ class BootstrapperClient:
             self.groups = data["group_info"]
             print(data["group_info"])
 
+            self.nodeName = data["node_name"]
+
             #init metricsConstructions with max values
             for server in self.servers.keys():
-                self.metricsConstruction[server] = {"saltos" : {"value" : sys.maxsize, "epoch" : 0} , "rtt": {"value" : datetime.now(), "epoch" : 0}}
+                self.metricsConstruction[server] = {"saltos" : {"value" : sys.maxsize, "node" : self.nodeName, "epoch" : 0} , "rtt": {"value" : datetime.now() - datetime(1970, 1, 1), "node" : self.nodeName, "epoch" : 0}}
 
-            for node in self.aliveNeighbours:
-                self.metricsEpochs[node] = 0
 
             ## Structure helf.activeClientsByNode = { neighbour_node : { metric : {group_no : count } }}
             #for node in self.aliveNeighbours:
@@ -563,17 +585,15 @@ class BootstrapperClient:
         servers_aux = servers.copy()
         min = None
         node_min = None
-        if len(servers_aux) > 0:
-            min = self.metricsConstruction[servers_aux[0]][metric]["value"]
-            node_min = self.metricsConstruction[servers_aux[0]][metric]["node"]
-            servers_aux.pop(0)
-
 
         for server in servers_aux:
             metric_val = self.metricsConstruction[server][metric]["value"]
-            if metric_val < min:
+            metric_epoch = self.metricsConstruction[server][metric]["epoch"]
+            metric_node = self.metricsConstruction[server][metric]["node"]
+
+            if (min == None or metric_val < min) and self.curEpoch == metric_epoch:
                 min = metric_val
-                node_min = self.metricsConstruction[server][metric]["node"]
+                node_min = metric_node
 
 
 
