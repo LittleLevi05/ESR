@@ -3,11 +3,11 @@ import sys
 import tkinter.messagebox
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
+import RtpPacket
 sys.path.append("..")
 from topology.ProtocolPacket import ProtocolPacket
 import pickle
 
-import RtpPacket
 
 CACHE_FILE_NAME = "cache-"
 CACHE_FILE_EXT = ".jpg"
@@ -110,7 +110,7 @@ class Client:
 		"""Pause button handler."""
 		if self.state == self.PLAYING:
 			print("Pause")
-			#self.playEvent.set()
+			self.playEvent.set()
 			self.state = self.READY
 			self.sendRequest(self.PAUSE)
 
@@ -119,9 +119,9 @@ class Client:
 		if self.state == self.READY:
 			# Create a new thread to listen for RTP packets
 			print("Play")
-			#threading.Thread(target=self.listenRtp).start()
-			#self.playEvent = threading.Event()
-			#self.playEvent.clear()
+			threading.Thread(target=self.listenRtp).start()
+			self.playEvent = threading.Event()
+			self.playEvent.clear()
 			self.state = self.PLAYING
 			self.sendRequest(self.PLAY)
 
@@ -150,17 +150,26 @@ class Client:
 		"""Listen for RTP packets."""
 		while True:
 			try:
-				data = self.rtpSocket.recv(20480)
+				data = self.rtpSocket.recv(20005)
 				if data:
 					rtpPacket = RtpPacket()
 					rtpPacket.decode(data)
-					
+
+
 					currFrameNbr = rtpPacket.seqNum()
 					print("Current Seq Num: " + str(currFrameNbr))
+
+					payload = rtpPacket.getPayload()
+
+					packet = pickle.loads(payload)
+
+					file_data = packet.data
+
+
 										
 					if currFrameNbr > self.frameNbr: # Discard the late packet
 						self.frameNbr = currFrameNbr
-						self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
+						self.updateMovie(self.writeFrame(file_data))
 			except:
 				# Stop listening upon requesting PAUSE or TEARDOWN
 				if self.playEvent.isSet(): 

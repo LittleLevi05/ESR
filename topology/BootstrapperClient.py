@@ -5,6 +5,7 @@ import time
 import threading
 from datetime import datetime
 import sys
+import RtpPacket
 
 class BootstrapperClient:
     def __init__(self, bootstrapperIP, bootstrapperPort):
@@ -25,6 +26,8 @@ class BootstrapperClient:
         self.rootNode = False
         self.nodeName = ""
         self.curEpoch = -1
+        self.rtpSocket = socket.socket(type=socket.SOCK_DGRAM)
+
 
     def getNeighboorNameByAddress(self, address):
         for node in self.aliveNeighbours:
@@ -306,6 +309,7 @@ class BootstrapperClient:
         metric = data["metric"]
         action = data["action"]
 
+        old_active = self.activeClientsByNode
         self.checkAndInitActiveClients(node, metric, group)
 
         if action == "STOP":
@@ -315,10 +319,41 @@ class BootstrapperClient:
         else:
             pass
 
-        self.activeClientsByNode[node][metric][group] = cur
-
+        if cur != 0:
+            self.activeClientsByNode[node][metric][group] = cur
+        else:
+            self.activeClientsByNode.pop(node)
 
         print("ACTIVE CLIENTS : " + str(self.activeClientsByNode))
+
+        if len(self.activeClientsByNode) == 0:
+            packet = ProtocolPacket("2", "")
+            socket_server = socket.socket()
+            socket_server.settimeout(1)
+
+            for server in self.servers:
+                server_ip = self.servers[server]["ip"]
+                try:
+                    socket_server.connect((server_ip, 20004))
+                    socket_server.send(pickle.dumps(packet))
+                except:
+                    print("Estou aqui 8")
+                finally:
+                    socket_server.close()
+        elif len(old_active) == 0 and len(self.activeClientsByNode) != 0:
+            packet = ProtocolPacket("1", "")
+            socket_server = socket.socket()
+            socket_server.settimeout(1)
+
+            for server in self.servers:
+                server_ip = self.servers[server]["ip"]
+                try:
+                    socket_server.connect((server_ip, 20004))
+                    socket_server.send(pickle.dumps(packet))
+                except:
+                    print("Estou aqui 8")
+                finally:
+                    socket_server.close()
 
 
     def opcode_9_handler(self, protocolPacket, address):
@@ -423,6 +458,23 @@ class BootstrapperClient:
                 if len(self.aliveClients) == 0:
                     self.entryPoint = False
 
+    def opcode_12_handler(self, protocolPacket):
+        """ I'm a rootNode and received the information that
+        I have a new server"""
+        data = protocolPacket.data
+        server_name = data["server_name"]
+        server_ip = data["server_ip"]
+
+        self.servers[server_name] = {"ip" : server_ip }
+
+    def opcode_13_handler(self, protocolPacket):
+        """ I'm a rootNode and received the information that
+        a server of mine has decided to leave the network"""
+        data = protocolPacket.data
+        server_name = data["server_name"]
+
+        if server_name in self.servers.keys():
+            del self.servers[server_name]
 
     def getClient(self, address):
         for client, ip in self.aliveClients.items():
@@ -471,6 +523,8 @@ class BootstrapperClient:
                 self.opcode_10_handler(protocolPacket = protocolPacket, address = address[0])
             elif protocolPacket.opcode == '11':
                 self.opcode_11_handler(protocolPacket, address[0])
+            elif ProtocolPacket.opcode == '12':
+                self.opcode_12_handler(protocolPacket)
             else:
                 print("opcode unknown")
         except EOFError:
@@ -571,6 +625,41 @@ class BootstrapperClient:
         aliveMessageThread = threading.Thread(target = self.aliveMessage)
         aliveMessageThread.start()
 
+        forwardThread = threading.Thread(target= self.forward)
+        forwardThread.start()
+
+
+    def forward(self):
+       while True:
+           try:
+               data = self.rtpSocket.recv(20005)
+               if data:
+                   rtpPacket = RtpPacket()
+                   rtpPacket.decode(data)
+
+                   payload = rtpPacket.getPayLoad()
+
+                   packet = pickle.loads(payload)
+                   group = packet.opcode
+                   file_data = packet.data
+
+                   #get active neigh with group
+                   active_nodes = self.getActiveNodesByGroup(group)
+
+
+                   #for neigh group send packet
+                   for node in active_nodes:
+                       node_ip = self.aliveNeighbours[node][0]["ip"]
+                       self.rtpSocket.sendto(rtpPacket.getPacket(), (node_ip, 20005))
+
+                   if self.entryPoint == True:
+                       for client in self.aliveClients:
+                           client_ip = sef.aliveClients[client]
+                           self.rtpSocket.sendto(rtpPacket.getPacket(), (client_ip, 20005))
+           except:
+               print("Estou aqui Forward")
+
+
 
     #routing functions
     def getClosestNeighbour(self, group, metric):
@@ -610,3 +699,14 @@ class BootstrapperClient:
                 self.metricsGroup[group] = {}
 
             self.metricsGroup[group][metric] = node_min
+
+
+    def getActiveNodesByGroup(self, group):
+        res = []
+        for node in self.activeClientsByNode.keys():
+            for metric in self.activeClientsByNode[node].keys():
+                for group_no in self.activeClientsByNode[node][metric].keys():
+                    if group_no == group:
+                        res.append(node)
+
+        return res

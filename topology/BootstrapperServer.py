@@ -13,6 +13,7 @@ class BootstrapperServer:
         self.port = port
         self.configTopology = ConfigTopology(configFile)
         self.lock = threading.Lock()
+        self.serverNo = 100
 
     def isBootstrapper(self, interfaces):
         for interface in interfaces:
@@ -166,7 +167,87 @@ class BootstrapperServer:
         conn.send(pickle.dumps(protocolPacket))
 
 
-    
+    def opcode_3_handler(self, address, packet):
+        """ I've received information that a server wants to join a group"""
+        data = packet.data
+        group = data["group"]
+        rootNodeIp = data["rootNode"]
+
+        rootNodeName = self.configTopology.getNodeNameByAddress(rootNodeIp)
+
+        server_name = "s" + str(self.serverNo)
+        self.serverNo += 1
+        self.configTopology.addServer(address, server_name, rootNodeName)
+
+        self.configTopology.addServerToGroup(server_name, group)
+
+        #send information to rootNode about a new server that he has to communicate
+        socket_rootNode = socket.socket()
+        socket_rootNode.settimeout(1)
+
+        try:
+            socket_rootNode.connect((rootNodeIp, 20003))
+            data = {}
+            data["server_name"] = server_name
+            data["server_ip"] = server_ip
+
+            packet = ProtocolPacket("12", data)
+
+            socket_rootNode.send(pickle.dumps(packet))
+
+        except Exceptions as e:
+            print("Estou aqui 3")
+        finally:
+            socket_rootNode.close()
+
+
+    def opcode_4_handler(self, address, packet):
+        """ I've received information that a server wants to close connection """
+        data = packet.data
+
+        server_info = self.configTopology.delServer(address)
+
+        server_name = server_info["servidor"]
+        server_rootNode = server_infor["rootNode"]
+        rootNodeIp = self.configTopology.getRandomInterface(server_rootNode)
+
+        self.configTopology.delServerFromGroups(server_name)
+
+
+
+         #send information to rootNode about a new server that he has to communicate
+        socket_rootNode = socket.socket()
+        socket_rootNode.settimeout(1)
+
+        try:
+            socket_rootNode.connect((rootNodeIp, 20003))
+            data = {}
+            data["server_name"] = server_name
+
+            packet = ProtocolPacket("13", data)
+
+            socket_rootNode.send(pickle.dumps(packet))
+
+        except Exceptions as e:
+            print("Estou aqui 4")
+        finally:
+            socket_rootNode.close()
+
+    def opcode_5_handler(self, conn, address, packet):
+        """ Received from a server a query about which group is associated with a filename"""
+        data = packet.data
+        filename = data["filename"]
+
+        groups = self.configTopology.getGroupsByFilename(filename)
+
+        if len(groups) != 0:
+            group = groups[0]
+            data = {}
+            data["group"] = group
+            protocolPacket = ProtocolPacket("0", data)
+
+            conn.send(pickle.dumps(protocolPacket))
+
     # description: demultiplex diferent protocol requests
     def demultiplexer(self,conn,address):
 
@@ -183,6 +264,12 @@ class BootstrapperServer:
                 self.opcode_1_answer(address=address[0])
             elif protocolPacket.opcode == '2':
                 self.opcode_2_answer(conn=conn, address=address[0])
+            elif ProtocolPacket.opcode == '3':
+                self.opcode_3_handler(address,protocolPacket)
+            elif ProtocolPacket.opcode == '4':
+                self.opcode_4_handler(adress,protocolPacket)
+            elif ProtocolPacket.opcode == '5':
+                self.opcode_5_handler(conn, address,protocolPacket)
             else:
                 print("opcode unknown")
         except EOFError:

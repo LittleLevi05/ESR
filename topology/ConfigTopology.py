@@ -95,3 +95,37 @@ class ConfigTopology:
             groups[group["grupo"]] = self.getServersNamesByGroup(group["grupo"])
 
         return groups
+
+    def addServer(self, address, name, rootNode):
+        { "servidor" : name, "ip" : address, "rootNode" : rootNode}
+        self.configFile["servidores"].append()
+
+
+    def delServer(self, address):
+        i = 0
+        found = False
+        for server in self.configFile["servidores"]:
+            if server["ip"] == address:
+                found = True
+                break
+            i += 1
+
+        if found == True:
+            server = self.configFile["servidores"].pop(i)
+            return server
+
+        return None
+
+
+    def addServerToGroup(self, name, group):
+        for group in self.configFile["grupos"]:
+            if group["grupo"] == group:
+                group["servidores"].append({"servidor" : name})
+                break
+
+    def delServerFromGroups(self, name):
+        for group in self.configFile["grupos"]:
+            groups_servers = group["servidores"].copy()
+            for server in groups_servers:
+                if server["servidor"] == name:
+                    group["servidores"].remove({"servidor" : name })
