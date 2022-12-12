@@ -5,7 +5,7 @@ from ServerWorker import ServerWorker
 import argparse
 import pickle
 
-sys.path.apped("..")
+sys.path.append("..")
 from topology.ProtocolPacket import ProtocolPacket
 
 
@@ -27,16 +27,17 @@ args, unknown = parser.parse_known_args()
 
 class Server:
 
-	self.ipBoot = "127.000.001"
-	self.portBoot = 20002
-	self.rtpPort = 20005
-	self.ipRootNode = "127.000.001"
-	self.group = 1
-	self.filename = ""
+        def __init__(self):
+                self.ipBoot = "127.000.001"
+	        self.portBoot = 20002
+	        self.rtpPort = 20005
+	        self.ipRootNode = "127.000.001"
+	        self.group = 1
+	        self.filename = ""
 
 
 	def main(self):
-		try:
+	        try:
 			if args.ipBoot != None:
 				self.ipBoot = args.ipBoot
 			if args.portBoot != None:
@@ -94,6 +95,7 @@ class Server:
 			ServerWorker(clientInfo, self.filename).run()
 
 if __name__ == "__main__":
-	(Server()).main()
+        server = Server()
+        server.main()
 
 

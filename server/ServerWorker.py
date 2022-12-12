@@ -5,10 +5,10 @@ import pickle
 
 # append the path of the
 # parent directory
+import RtpPacket
+import VideoStream
 sys.path.append("..")
 
-from helpers import RtpPacket
-from helpers import VideoStream
 from topology.ProtocolPacket import ProtocolPacket
 
 

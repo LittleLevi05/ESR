@@ -5,7 +5,7 @@ import time
 import threading
 from datetime import datetime
 import sys
-import RtpPacket
+from .RtpPacket import RtpPacket
 
 class BootstrapperClient:
     def __init__(self, bootstrapperIP, bootstrapperPort):
