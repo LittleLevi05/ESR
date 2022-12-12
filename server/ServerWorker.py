@@ -28,8 +28,12 @@ class ServerWorker:
 
 	media_prefix = "media/"
 	
-	def __init__(self, clientInfo):
+	def __init__(self, clientInfo, media):
 		self.clientInfo = clientInfo
+		self.mediaAvailable = media
+
+		for m in self.mediaAvailable
+
 
 	def __add_prefix(self,filename):
 		return self.media_prefix + filename
@@ -41,12 +45,30 @@ class ServerWorker:
 	def recvRtspRequest(self):
 		"""Receive RTSP request from the client."""
 		connSocket = self.clientInfo['rtspSocket'][0]
-		while True:            
-			data = connSocket.recv(256)
-			if data:
-				print("Data received:\n" + data.decode("utf-8"))
-				self.processRtspRequest(data.decode("utf-8"))
-	
+		try:
+			server_socket = socket.socket()
+			server_socket.bind(("0.0.0.0", 20004))
+			server_socket.listen(2)
+			while True:
+				conn, address = server_socket.accept()
+				self.demultiplexer(conn, address)
+				if data:
+					print("Data received:\n" + data.decode("utf-8"))
+					self.processRtspRequest(data.decode("utf-8"))
+		finally:
+			server_socket.close()
+
+	def demultiplexer(self, conn, address):
+		try:
+			data = conn.recv(256)
+			packet = pickle.loads(data)
+
+			if packet.opcode == '1':
+				self.state = READY
+
+
+
+
 	def processRtspRequest(self, data):
 		"""Process RTSP request sent from the client."""
 		# Get the request type
