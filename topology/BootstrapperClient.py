@@ -388,13 +388,11 @@ class BootstrapperClient:
         # make functions to check init and init
         # make function to update active interfaces
 
-        if self.entryPoint == False:
-            node = self.getNeighboorNameByAddress(address)
-            print("NODE: " + str(node))
-        else:
+        node = self.getNeighboorNameByAddress(address)
+        if node == None and self.entryPoint == True:
             node = self.getClient(address)
-            print("NODE: " + str(node))
 
+        print("NODE IN 9: " + str(node))
         data = protocolPacket.data
         group = data["group"]
         metric = data["metric"]
@@ -416,6 +414,7 @@ class BootstrapperClient:
             self.activeClientsByNode[node][metric][group] = cur
         else:
             self.activeClientsByNode.pop(node)
+         
 
         print("ACTIVE CLIENTS : " + str(self.activeClientsByNode))
 
