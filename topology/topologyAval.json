@@ -86,7 +86,7 @@
             "ficheiro": "movie.mjpeg",
             "servidores": [
                 {"servidor": "s1"},
-		        {"servidor": "s2"}
+		{"servidor": "s2"}
             ]
         }
     ]

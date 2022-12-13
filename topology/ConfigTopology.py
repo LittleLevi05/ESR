@@ -61,11 +61,11 @@ class ConfigTopology:
             if server["servidor"] == serverName:
                 return server["ip"]
 
-    def getGroupsByFilename(self, fileName):
+    def getGroupsByFilename(self, filename):
         groups = []
         for group in self.configFile["grupos"]:
-            if group["ficheiro"] == fileName:
-                groups.append(group["group"])
+            if group["ficheiro"] == filename:
+                groups.append(group["grupo"])
 
         return groups
 
@@ -97,8 +97,8 @@ class ConfigTopology:
         return groups
 
     def addServer(self, address, name, rootNode):
-        { "servidor" : name, "ip" : address, "rootNode" : rootNode}
-        self.configFile["servidores"].append()
+        server_info = { "servidor" : name, "ip" : address, "rootNode" : rootNode}
+        self.configFile["servidores"].append(server_info)
 
 
     def delServer(self, address):
@@ -117,11 +117,13 @@ class ConfigTopology:
         return None
 
 
-    def addServerToGroup(self, name, group):
+    def addServerToGroup(self, name, groupArg):
+        print("NAME " + name)
+        print("GROUP " + str(groupArg))
         for group in self.configFile["grupos"]:
-            if group["grupo"] == group:
+            if group["grupo"] == groupArg:
+                print("Vou fazer append")
                 group["servidores"].append({"servidor" : name})
-                break
 
     def delServerFromGroups(self, name):
         for group in self.configFile["grupos"]:

@@ -171,6 +171,7 @@ class BootstrapperServer:
         """ I've received information that a server wants to join a group"""
         data = packet.data
         group = data["group"]
+        print("ESTE É O GRUPO QUE RECEBI " + str(group))
         rootNodeIp = data["rootNode"]
 
         rootNodeName = self.configTopology.getNodeNameByAddress(rootNodeIp)
@@ -179,7 +180,11 @@ class BootstrapperServer:
         self.serverNo += 1
         self.configTopology.addServer(address, server_name, rootNodeName)
 
+        print("SERVERS: " + str(self.configTopology.getServers()))
+
         self.configTopology.addServerToGroup(server_name, group)
+
+        print("GROUP: " + str(self.configTopology.getGroups()))
 
         #send information to rootNode about a new server that he has to communicate
         socket_rootNode = socket.socket()
@@ -189,14 +194,15 @@ class BootstrapperServer:
             socket_rootNode.connect((rootNodeIp, 20003))
             data = {}
             data["server_name"] = server_name
-            data["server_ip"] = server_ip
+            data["server_ip"] = address
 
             packet = ProtocolPacket("12", data)
 
             socket_rootNode.send(pickle.dumps(packet))
 
-        except Exceptions as e:
+        except Exception as e:
             print("Estou aqui 3")
+            print(str(e))
         finally:
             socket_rootNode.close()
 
@@ -238,7 +244,9 @@ class BootstrapperServer:
         data = packet.data
         filename = data["filename"]
 
+        print("FILENAME: " + filename)
         groups = self.configTopology.getGroupsByFilename(filename)
+        print(groups)
 
         if len(groups) != 0:
             group = groups[0]
@@ -264,12 +272,12 @@ class BootstrapperServer:
                 self.opcode_1_answer(address=address[0])
             elif protocolPacket.opcode == '2':
                 self.opcode_2_answer(conn=conn, address=address[0])
-            elif ProtocolPacket.opcode == '3':
-                self.opcode_3_handler(address,protocolPacket)
-            elif ProtocolPacket.opcode == '4':
-                self.opcode_4_handler(adress,protocolPacket)
-            elif ProtocolPacket.opcode == '5':
-                self.opcode_5_handler(conn, address,protocolPacket)
+            elif protocolPacket.opcode == '3':
+                self.opcode_3_handler(address[0],protocolPacket)
+            elif protocolPacket.opcode == '4':
+                self.opcode_4_handler(adress[0],protocolPacket)
+            elif protocolPacket.opcode == '5':
+                self.opcode_5_handler(conn, address[0],protocolPacket)
             else:
                 print("opcode unknown")
         except EOFError:
