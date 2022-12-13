@@ -302,6 +302,8 @@ class BootstrapperServer:
                             packet = {}
                             packet["servidores"] = servers
                             packet["epoch"] = epoch
+                            packet["group_info"] = self.configTopology.getGroups()
+                            print("GROUP_INFO " + str(packet["group_info"]))
                             print("Sent protocolPacket with opcode 6")
 
                             protocolPacket = ProtocolPacket("6", packet)

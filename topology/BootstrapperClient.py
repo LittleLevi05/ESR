@@ -111,6 +111,10 @@ class BootstrapperClient:
         servers = data["servidores"]
         print(servers)
         epoch = data["epoch"]
+        group_info = data["group_info"]
+
+        self.updateGroups(group_info)
+
         for aliveNeighbour in self.aliveNeighbours:
             try:
                 client_socket = socket.socket()
@@ -129,6 +133,7 @@ class BootstrapperClient:
                 data["servers"] = data_servers
                 data["visited"] = [self.nodeName]
                 data["epoch"] = epoch
+                data["group_info"] = self.groups
                 self.curEpoch = epoch
 
                 for server, server_info in data_servers.items():
@@ -150,6 +155,19 @@ class BootstrapperClient:
             finally:
                 client_socket.close()
 
+    def updateGroups(self, group_info):
+        #print("GROUP_INFO: " + str(group_info))
+        #print("SELF.GROUP: " + str(self.groups))
+        for group in group_info:
+            #print("GROUP ITERATION: " + str(group_info[group]))
+            if group not in self.groups.keys():
+                self.groups[group] = group_info[group]
+            else:
+                for server in group_info[group]:
+                    if server not in self.groups[group]:
+                        self.groups[group].append(server)
+
+        print("UPDATED SELF.GROUPS: " + str(self.groups))
     def opcode_7_handler(self, protocolPacket, address):
         """I'm an overlay layer and need to update my metrics and continue to flood"""
         neighbourName = self.getNeighboorNameByAddress(address)
@@ -158,6 +176,7 @@ class BootstrapperClient:
         data_servers = data["servers"]
         visited = data["visited"]
         epoch = data["epoch"]
+        group_info = data["group_info"]
         self.curEpoch = epoch
 
         old_group_metrics = copy.deepcopy(self.metricsGroup)
@@ -166,6 +185,8 @@ class BootstrapperClient:
         for server, server_info in data_servers.items():
             server_info = self.updateMetricsByServer(
                 server, server_info, address, epoch)
+
+        self.updateGroups(group_info)
 
         for group in self.groups:
             self.updateNodeByGroup(group)
@@ -747,6 +768,7 @@ class BootstrapperClient:
     def updateNodeByGroup(self, group):
         """ self.metricsGroup = { group : { metric : node } }"""
         servers = self.groups[group]
+        print("SERVERS IN UPDATE NODE: " + str(servers))
         for metric in self.metrics:
             node_min = self.getMinNode(servers, metric)
             # inicializar metricsGroup
