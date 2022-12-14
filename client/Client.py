@@ -8,7 +8,7 @@ import threading
 import sys
 import traceback
 import os
-import RtpPacket
+from RtpPacket import RtpPacket
 sys.path.append("..")
 
 from topology.ProtocolPacket import ProtocolPacket
@@ -156,11 +156,15 @@ class Client:
 
     def listenRtp(self):
         """Listen for RTP packets."""
+        print("ListenRtp thread!!!")
         while True:
+            print("ListenRtp thread!!!")
             try:
                 data = self.rtpSocket.recv(20005)
                 if data:
+                    print("oi1")
                     rtpPacket = RtpPacket()
+                    print("oi2")
                     rtpPacket.decode(data)
 
                     currFrameNbr = rtpPacket.seqNum()
@@ -338,7 +342,7 @@ class Client:
 
         try:
             # Bind the socket to the address using the RTP port given by the client user
-            self.rtpSocket.bind((self.serverAddr, self.rtpPort))
+            self.rtpSocket.bind(("0.0.0.0", self.rtpPort))
             print('\nBind \n')
         except:
             tkinter.messagebox.showwarning(
