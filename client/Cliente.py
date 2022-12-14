@@ -36,7 +36,6 @@ if __name__ == "__main__":
         print(port)
         print(rtpPort)
 
-
         # Create a new client
         app = Client(root, addr, port, rtpPort, "movie.Mjpeg")
         app.master.title("Cliente Exemplo")
