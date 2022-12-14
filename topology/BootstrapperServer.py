@@ -158,6 +158,7 @@ class BootstrapperServer:
         data["group_info"] = self.configTopology.getGroups()
         node = self.configTopology.getNodeNameByAddress(address=address)
         data["node_name"] = node
+        data["node_address"] = address
 
         # opcode -1 because this is only supposed to be used on initiation
         # when there is a change in groups and server an alert on the modification
@@ -275,7 +276,7 @@ class BootstrapperServer:
             elif protocolPacket.opcode == '3':
                 self.opcode_3_handler(address[0],protocolPacket)
             elif protocolPacket.opcode == '4':
-                self.opcode_4_handler(adress[0],protocolPacket)
+                self.opcode_4_handler(address[0],protocolPacket)
             elif protocolPacket.opcode == '5':
                 self.opcode_5_handler(conn, address[0],protocolPacket)
             else:
