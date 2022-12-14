@@ -27,6 +27,7 @@ class BootstrapperClient:
         self.entryPoint = False
         self.rootNode = False
         self.nodeName = ""
+        self.nodeAddress = ""
         self.curEpoch = -1
         self.rtpSocket = socket.socket(type=socket.SOCK_DGRAM)
 
@@ -168,6 +169,7 @@ class BootstrapperClient:
                         self.groups[group].append(server)
 
         print("UPDATED SELF.GROUPS: " + str(self.groups))
+    
     def opcode_7_handler(self, protocolPacket, address):
         """I'm an overlay layer and need to update my metrics and continue to flood"""
         neighbourName = self.getNeighboorNameByAddress(address)
@@ -418,7 +420,7 @@ class BootstrapperClient:
         group = data["group"]
         metric = data["metric"]
         action = data["action"]
-        old_active = self.activeClientsByNode
+        old_active = copy.deepcopy(self.activeClientsByNode)
         self.checkAndInitActiveClients(node, metric, group)
 
         cur = self.activeClientsByNode[node][metric][group]
@@ -470,18 +472,19 @@ class BootstrapperClient:
                         finally:
                             socket_server.close()
                 elif len(old_active) == 0 and len(self.activeClientsByNode) != 0:
+                    print("> Como sou o root node, enviarei para o servidor o pedido da stream")
                     packet = ProtocolPacket("1", "")
                     socket_server = socket.socket()
                     socket_server.settimeout(1)
 
                     for server in self.servers:
-                        print("ESTOU AQUI")
+                        #print("ESTOU AQUI")
                         server_ip = self.servers[server]["ip"]
                         try:
                             socket_server.connect((server_ip, 20004))
                             socket_server.send(pickle.dumps(packet))
                         except:
-                            print("Estou aqui 8")
+                            print("(!)Exceção no momento de conexão do root node com o servidor")
                         finally:
                             socket_server.close()
 
@@ -664,6 +667,7 @@ class BootstrapperClient:
             print(data["group_info"])
 
             self.nodeName = data["node_name"]
+            self.nodeAddress = data["node_address"]
 
             # init metricsConstructions with max values
             for server in self.servers.keys():
@@ -709,14 +713,17 @@ class BootstrapperClient:
         forwardThread.start()
 
     def forward(self):
+        print("Comecei a thread do forwarding!")
+        self.rtpSocket.bind(("0.0.0.0", 20005))
         while True:
             try:
                 data = self.rtpSocket.recv(20005)
                 if data:
+                    print("Recebido pacote da stream para fazer forwarding ...")
                     rtpPacket = RtpPacket()
                     rtpPacket.decode(data)
 
-                    payload = rtpPacket.getPayLoad()
+                    payload = rtpPacket.getPayload()
 
                     packet = pickle.loads(payload)
                     group = packet.opcode
@@ -725,29 +732,35 @@ class BootstrapperClient:
                     # get active neigh with group
                     active_nodes = self.getActiveNodesByGroup(group)
 
+                    print("Active nodes to forwarding: ",active_nodes)
+
                     # for neigh group send packet
                     for node in active_nodes:
-                        node_ip = self.aliveNeighbours[node][0]["ip"]
-                        self.rtpSocket.sendto(
-                            rtpPacket.getPacket(), (node_ip, 20005))
+                        print("Realizando envio do pacote da stream para os vizinhos ativos ...")
+                        try:
+                            node_ip = self.aliveNeighbours[node][0]["ip"]
+                            print("IP do vizinho ativo: ",node_ip)
+                            self.rtpSocket.sendto(
+                                rtpPacket.getPacket(), (node_ip, 20005))
+                        except:
+                            print("Vizinho ativo é o cliente final e será tratado a seguir!")
 
                     if self.entryPoint == True:
+                        print("Como sou o entry point dos clientes, devo mandá-los a stream ..")
                         for client in self.aliveClients:
-                            client_ip = sef.aliveClients[client]
+                            client_ip = self.aliveClients[client]
                             self.rtpSocket.sendto(
                                 rtpPacket.getPacket(), (client_ip, 20005))
             except:
                 print("Estou aqui Forward")
 
     # routing functions
-
     def getClosestNeighbour(self, group, metric):
         servers = self.groups[group]
         node_min = self.getMinNode(servers, metric)
         return node_min
 
     # Por testar
-
     def getMinNode(self, servers, metric):
         servers_aux = servers.copy()
         min = None
@@ -778,11 +791,12 @@ class BootstrapperClient:
             self.metricsGroup[group][metric] = node_min
 
     def getActiveNodesByGroup(self, group):
+        print(self.activeClientsByNode)
         res = []
         for node in self.activeClientsByNode.keys():
             for metric in self.activeClientsByNode[node].keys():
                 for group_no in self.activeClientsByNode[node][metric].keys():
-                    if group_no == group:
+                    if str(group_no) == str(group):
                         res.append(node)
 
         return res
