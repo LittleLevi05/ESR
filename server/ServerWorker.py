@@ -165,6 +165,11 @@ class ServerWorker:
                 break
 
             data = self.clientInfo['videoStream'].nextFrame()
+            #O filme chegou ao fim
+            if data == None:
+                self.clientInfo['videoStream'] = VideoStream(self.filename)
+                data = self.clientInfo['videoStream'].nextFrame()
+
             group = str(self.clientInfo['group'])
             packet = ProtocolPacket(group, data)
             data = pickle.dumps(packet)

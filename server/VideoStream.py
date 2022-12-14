@@ -17,6 +17,8 @@ class VideoStream:
             data = self.file.read(framelength)
             self.frameNum += 1
             return data
+        else:
+            return None
 
     def frameNbr(self):
         """Get frame number."""
