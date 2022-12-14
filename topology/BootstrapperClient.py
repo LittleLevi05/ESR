@@ -149,6 +149,11 @@ class BootstrapperClient:
                     self.metricsConstruction[server]["rtt"] = rtt_updated_dic
                     self.metricsConstruction[server]["saltos"] = saltos_updated_dic
 
+                for group in self.groups: 
+                    self.updateNodeByGroup(group)
+                
+                print("UPDATED METRICS GROUP" + str(self.metricsGroup))
+
                 protocolPacket = ProtocolPacket("7", data)
                 client_socket.send(pickle.dumps(protocolPacket))
             except Exception as e:
