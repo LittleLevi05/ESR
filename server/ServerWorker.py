@@ -63,8 +63,9 @@ class ServerWorker:
             data = conn.recv(256)
             packet = pickle.loads(data)
 
-            print("RECEBI MENSAGEM")
+            #print("RECEBI MENSAGEM")
             if packet.opcode == '1':
+                print("Recebi opcode1 para começar Stream")
                 # received a request to start the stream
                 if self.state == self.READY:
                     self.clientInfo["rtpSocket"] = socket.socket(
@@ -156,6 +157,7 @@ class ServerWorker:
     def sendRtp(self):
         """Send RTP packets over UDP."""
         while True:
+            print("A enviar pacotes da stream para o root node ", self.clientInfo['address'], " para porta: ", self.clientInfo['rtpPort'])
             self.clientInfo['event'].wait(0.05)
 
             # Stop sending if request is PAUSE or TEARDOWN
@@ -169,6 +171,7 @@ class ServerWorker:
             if data:
                 frameNumber = self.clientInfo['videoStream'].frameNbr()
                 try:
+                    # print("A enviar pacotes da stream para o root node ", address)
                     address = self.clientInfo['address']
                     port = int(self.clientInfo['rtpPort'])
                     self.clientInfo['rtpSocket'].sendto(
