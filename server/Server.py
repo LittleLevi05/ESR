@@ -5,6 +5,7 @@ from ServerWorker import ServerWorker
 
 import argparse
 import pickle
+import signal
 
 sys.path.append("..")
 from topology.ProtocolPacket import ProtocolPacket
@@ -31,6 +32,8 @@ parser.add_argument('--filename', '-f', type=str,
 args, unknown = parser.parse_known_args()
 
 
+
+
 class Server:
     def __init__(self):
         self.ipBoot = "127.000.001"
@@ -39,6 +42,22 @@ class Server:
         self.ipRootNode = "127.000.001"
         self.group = 1
         self.filename = ""
+
+    def handler(self, signum, frame):
+        server_socket = socket.socket()
+        server_socket.settimeout(1)
+        try:
+            packet = ProtocolPacket("4", "")
+            server_socket.connect((self.ipBoot, self.portBoot))
+            server_socket.send(pickle.dumps(packet))
+        except:
+            print("Estou aqui handler")
+        finally:
+            server_socket.close()
+
+        self.clientInfo['event'].set()
+
+
 
     def main(self):
         try:
@@ -94,12 +113,13 @@ class Server:
 
         print("ESTOU AQUI")
 
-        clientInfo = {}
-        clientInfo['rtpPort'] = self.rtpPort
-        clientInfo['address'] = self.ipRootNode
-        clientInfo['group'] = self.group
+        self.clientInfo = {}
+        self.clientInfo['rtpPort'] = self.rtpPort
+        self.clientInfo['address'] = self.ipRootNode
+        self.clientInfo['group'] = self.group
         print("I'm here")
-        ServerWorker(clientInfo, self.filename).run()
+        signal.signal(signal.SIGINT, self.handler)
+        ServerWorker(self.clientInfo, self.filename).run()
 
 
 

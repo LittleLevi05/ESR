@@ -10,6 +10,7 @@ import pickle
 # parent directory
 from RtpPacket import RtpPacket
 from VideoStream import VideoStream
+import signal
 sys.path.append("..")
 
 from topology.ProtocolPacket import ProtocolPacket
