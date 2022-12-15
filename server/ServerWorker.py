@@ -156,12 +156,15 @@ class ServerWorker:
 
     def sendRtp(self):
         """Send RTP packets over UDP."""
+        
+        print("A enviar pacotes da stream para o root node ", self.clientInfo['address'], " para porta: ", self.clientInfo['rtpPort'])
         while True:
-            print("A enviar pacotes da stream para o root node ", self.clientInfo['address'], " para porta: ", self.clientInfo['rtpPort'])
+            #print("A enviar pacotes da stream para o root node ", self.clientInfo['address'], " para porta: ", self.clientInfo['rtpPort'])
             self.clientInfo['event'].wait(0.05)
 
             # Stop sending if request is PAUSE or TEARDOWN
             if self.clientInfo['event'].isSet():
+                print("Vou parar")
                 break
 
             data = self.clientInfo['videoStream'].nextFrame()

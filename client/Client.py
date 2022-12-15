@@ -81,6 +81,16 @@ class Client:
         self.label.grid(row=0, column=0, columnspan=4,
                         sticky=W+E+N+S, padx=5, pady=5)
 
+        self.setup = Button(self.master, width=20, padx=3, pady=3)
+        self.setup["text"] = "Rewind"
+        self.setup["command"] = self.rewind
+        self.setup.grid(row=1, column=4, padx=2, pady=2)
+
+
+    def rewind(self):
+        self.frameNbr = 0
+
+
     def setupMovie(self):
         """Setup button handler."""
         if self.state == self.INIT:

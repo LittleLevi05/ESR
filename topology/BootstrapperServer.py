@@ -35,32 +35,28 @@ class BootstrapperServer:
             #node = self.configTopology.getNodeNameByAddress(address=self.ip)
             #self.configTopology.aliveNodes[node] = timeNow
 
-            try:
-                self.lock.acquire()
-                for node in self.configTopology.aliveNodes:
-                    # print("nodo:", str(node)," - last time:", str(self.configTopology.aliveNodes[node]))
-                    if self.configTopology.aliveNodes[node] < (timeNow - timedelta(seconds=6)):
-                        print(str(node), " is not current alive")
-                        nodesNotAlive.append(node)
-                        for neighboor in self.configTopology.getVizinhos(str(node)):
-                            #print("devo avisar ao ", str(neighboor), " que o ", str(node), "não está mais ativo!")
-                            #print(neighboor)
-                            if neighboor["nodo"] in self.configTopology.aliveNodes:
-                                try:
-                                    client_socket = socket.socket()
-                                    # select a random interface from the active neighboor to send the message
-                                    # here what is relevant is to send the information to the node itself, no matter the interface.
-                                    client_socket.connect((neighboor["interfaces"][0]["ip"],20003))
-                                    data = {}
-                                    data["nodo"] = str(node)
-                                    protocolPacket = ProtocolPacket("3",data)
-                                    client_socket.send(pickle.dumps(protocolPacket))
-                                except Exception as e:
-                                    print(str(e))
-                                finally:
-                                    client_socket.close()
-            finally:
-                self.lock.release()
+            for node in self.configTopology.aliveNodes:
+                # print("nodo:", str(node)," - last time:", str(self.configTopology.aliveNodes[node]))
+                if self.configTopology.aliveNodes[node] < (timeNow - timedelta(seconds=6)):
+                    print(str(node), " is not current alive")
+                    nodesNotAlive.append(node)
+                    for neighboor in self.configTopology.getVizinhos(str(node)):
+                        #print("devo avisar ao ", str(neighboor), " que o ", str(node), "não está mais ativo!")
+                        #print(neighboor)
+                        if neighboor["nodo"] in self.configTopology.aliveNodes:
+                            try:
+                                client_socket = socket.socket()
+                                # select a random interface from the active neighboor to send the message
+                                # here what is relevant is to send the information to the node itself, no matter the interface.
+                                client_socket.connect((neighboor["interfaces"][0]["ip"],20003))
+                                data = {}
+                                data["nodo"] = str(node)
+                                protocolPacket = ProtocolPacket("3",data)
+                                client_socket.send(pickle.dumps(protocolPacket))
+                            except Exception as e:
+                                print(str(e))
+                            finally:
+                                client_socket.close()
 
             for node in nodesNotAlive: 
                 if node in self.configTopology.aliveNodes:
@@ -124,6 +120,7 @@ class BootstrapperServer:
         # print("Let's send to neighboors from node " + str(nodeName) + " that he is alive!")
         for activeNeighboor in activeNeighboors:
             client_socket = socket.socket()
+            client_socket.settimeout(1)
 
             try:
                 # select a random interface from the active neighboor to send the message
@@ -297,6 +294,7 @@ class BootstrapperServer:
                 for rootNode, servers in rootsAndServers.items():
                     if rootNode in self.configTopology.aliveNodes:
                         client_socket = socket.socket()
+                        client_socket.settimeout(1)
                         try:
                             client_socket.connect((self.configTopology.getRandomInterface(rootNode), 20003))
 

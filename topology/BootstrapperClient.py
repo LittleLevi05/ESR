@@ -61,8 +61,48 @@ class BootstrapperClient:
         print("opcode 3!")
         print(protocolPacket.data)
         print("Nodo ", protocolPacket.data["nodo"], " está desativo!")
-        if protocolPacket.data["nodo"] in self.aliveNeighbours.keys():
-            self.aliveNeighbours.pop(protocolPacket.data["nodo"])
+        node = protocolPacket.data["nodo"]
+        if node in self.aliveNeighbours.keys():
+            self.aliveNeighbours.pop(node)
+
+        copy_active = copy.deepcopy(self.activeClientsByNode)
+        rootNode = False
+        if node in copy_active:
+            data = {}
+            data["action"] = "STOP"
+            for metric in copy_active[node]:
+                data["metric"] = metric
+                for group in copy_active[node][metric]:
+                    parent_node = self.metricsGroup[group][metric]
+                    if self.nodeName != parent_node:
+                        data["group"] = group
+                        cur = copy_active[node][metric][group]
+                        for i in range(cur):
+                            client_socket = socket.socket()
+                            client_socket.settimeout(1)
+                            try:
+                                client_socket.connect(
+                                    (self.aliveNeighbours[parent_node][0]["ip"], 20003))
+                                protocolPacket = ProtocolPacket("9", data)
+                                client_socket.send(pickle.dumps(protocolPacket))
+                            except Exception as e:
+                                print("Estou aqui 9")
+                            finally:
+                                client_socket.close()
+                    else:
+                        rootNode = True
+                        
+            self.activeClientsByNode.pop(node)
+
+            if rootNode:
+                self.updateServerStatus(copy_active, self.activeClientsByNode)
+
+
+
+
+
+
+
         print("Active nodes update ----------------------------")
         print(self.aliveNeighbours)
 
@@ -157,7 +197,7 @@ class BootstrapperClient:
                 protocolPacket = ProtocolPacket("7", data)
                 client_socket.send(pickle.dumps(protocolPacket))
             except Exception as e:
-                print("Estou aqui 6")
+                print("Estou aqui 6" + str(e))
             finally:
                 client_socket.close()
 
@@ -462,36 +502,65 @@ class BootstrapperClient:
                 finally:
                     client_socket.close()
             else:
-                if len(self.activeClientsByNode) == 0:
-                    packet = ProtocolPacket("2", "")
-                    socket_server = socket.socket()
-                    socket_server.settimeout(1)
+                self.updateServerStatus(old_active, self.activeClientsByNode)
+                
 
-                    for server in self.servers:
-                        server_ip = self.servers[server]["ip"]
-                        try:
-                            socket_server.connect((server_ip, 20004))
-                            socket_server.send(pickle.dumps(packet))
-                        except:
-                            print("Estou aqui 8")
-                        finally:
-                            socket_server.close()
-                elif len(old_active) == 0 and len(self.activeClientsByNode) != 0:
-                    print("> Como sou o root node, enviarei para o servidor o pedido da stream")
-                    packet = ProtocolPacket("1", "")
-                    socket_server = socket.socket()
-                    socket_server.settimeout(1)
+    def updateServerStatus(self, old_active, new_active):
+        groups_old = self.getGroupsFromActiveNode(old_active)
+        print("GROUPS_OLD : " + str(groups_old))
+        groups_new = self.getGroupsFromActiveNode(new_active)
+        print("GROUPS_NEW : " + str(groups_new))
 
-                    for server in self.servers:
-                        #print("ESTOU AQUI")
-                        server_ip = self.servers[server]["ip"]
-                        try:
-                            socket_server.connect((server_ip, 20004))
-                            socket_server.send(pickle.dumps(packet))
-                        except:
-                            print("(!)Exceção no momento de conexão do root node com o servidor")
-                        finally:
-                            socket_server.close()
+        groups_left = groups_old - groups_new
+        print("GROUPS_LEFT : " + str(groups_left))
+        groups_joined = groups_new - groups_old
+        print("GROUPS_JOINED : " + str(groups_left))
+
+        for group in groups_left:
+            servers = self.getServersRootNode(group)
+            self.sendRequestServers(servers, "2")
+
+        for group in groups_joined:
+            servers = self.getServersRootNode(group)
+            self.sendRequestServers(servers, "1")
+
+    def sendRequestServers(self, servers, opcode):
+        packet = ProtocolPacket(opcode, "")
+        for server in servers:
+            server_ip = self.servers[server]["ip"]
+            socket_server = socket.socket()
+            socket_server.settimeout(1)
+            try:
+                socket_server.connect((server_ip, 20004))
+                socket_server.send(pickle.dumps(packet))
+            except:
+                print("Estou aqui 8")
+            finally:
+                socket_server.close()
+
+    def getServersRootNode(self, group):
+        servers = self.groups[group]
+        result = []
+        for server in servers:
+            if self.serverFromRootNode(self.nodeName, server):
+                result.append(server)
+        return result
+
+
+    def serverFromRootNode(self, rootNode, server):
+        for metric in self.metrics:
+            if self.metricsConstruction[server][metric]["node"] != rootNode:
+                return False
+        return True
+
+    def getGroupsFromActiveNode(self, active):
+        group_r = set()
+        for node in active:
+            for metric in active[node]:
+                for group in active[node][metric]:
+                    if self.metricsGroup[group][metric] == self.nodeName:
+                        group_r.add(group)
+        return group_r
 
     def sendRequestPacket(self, node, data, opcode):
         client_socket = socket.socket()
@@ -724,7 +793,7 @@ class BootstrapperClient:
             try:
                 data = self.rtpSocket.recv(20005)
                 if data:
-                    print("Recebido pacote da stream para fazer forwarding ...")
+                    #print("Recebido pacote da stream para fazer forwarding ...")
                     rtpPacket = RtpPacket()
                     rtpPacket.decode(data)
 
@@ -734,30 +803,36 @@ class BootstrapperClient:
                     group = packet.opcode
                     file_data = packet.data
 
+                    self.lock.acquire()
+
                     # get active neigh with group
                     active_nodes = self.getActiveNodesByGroup(group)
 
-                    print("Active nodes to forwarding: ",active_nodes)
+                    #print("Active nodes to forwarding: ",active_nodes)
 
                     # for neigh group send packet
                     for node in active_nodes:
-                        print("Realizando envio do pacote da stream para os vizinhos ativos ...")
+                        #print("Realizando envio do pacote da stream para os vizinhos ativos ...")
                         try:
                             node_ip = self.aliveNeighbours[node][0]["ip"]
-                            print("IP do vizinho ativo: ",node_ip)
+                            #print("IP do vizinho ativo: ",node_ip)
                             self.rtpSocket.sendto(
                                 rtpPacket.getPacket(), (node_ip, 20005))
                         except:
-                            print("Vizinho ativo é o cliente final e será tratado a seguir!")
+                            #print("Vizinho ativo é o cliente final e será tratado a seguir!")
+                            pass
+                            
 
                     if self.entryPoint == True:
-                        print("Como sou o entry point dos clientes, devo mandá-los a stream ..")
+                        #print("Como sou o entry point dos clientes, devo mandá-los a stream ..")
                         for client in self.aliveClients:
                             client_ip = self.aliveClients[client]
                             self.rtpSocket.sendto(
                                 rtpPacket.getPacket(), (client_ip, 20005))
             except:
                 print("Estou aqui Forward")
+            finally:
+                self.lock.release()
 
     # routing functions
     def getClosestNeighbour(self, group, metric):
@@ -772,13 +847,16 @@ class BootstrapperClient:
         node_min = None
 
         for server in servers_aux:
-            metric_val = self.metricsConstruction[server][metric]["value"]
-            metric_epoch = self.metricsConstruction[server][metric]["epoch"]
-            metric_node = self.metricsConstruction[server][metric]["node"]
+            #pode ser um caso especial em que ainda não recebeu métricas do servidor, mas já tem informação 
+            #que ele existe
+            if server in self.metricsConstruction.keys():
+                metric_val = self.metricsConstruction[server][metric]["value"]
+                metric_epoch = self.metricsConstruction[server][metric]["epoch"]
+                metric_node = self.metricsConstruction[server][metric]["node"]
 
-            if (min == None or metric_val < min) and self.curEpoch - metric_epoch <= 1 :
-                min = metric_val
-                node_min = metric_node
+                if (min == None or metric_val < min) and self.curEpoch - metric_epoch <= 1 :
+                    min = metric_val
+                    node_min = metric_node
 
         return node_min
 
@@ -796,7 +874,7 @@ class BootstrapperClient:
             self.metricsGroup[group][metric] = node_min
 
     def getActiveNodesByGroup(self, group):
-        print(self.activeClientsByNode)
+        #print(self.activeClientsByNode)
         res = []
         for node in self.activeClientsByNode.keys():
             for metric in self.activeClientsByNode[node].keys():
